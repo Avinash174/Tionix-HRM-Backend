@@ -26,6 +26,8 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.get("/", (req, res) => {
   res.json({
     message: "HRM Backend Running",
+    environment: process.env.NODE_ENV || "development",
+    vercel: !!process.env.VERCEL,
   });
 });
 
@@ -47,10 +49,20 @@ const server = http.createServer(app);
 initSockets(server);
 
 const startServer = async () => {
-  await connectDB();
-  server.listen(PORT, () => {
-    console.log(`Server running on ${PORT}`);
-  });
+  try {
+    await connectDB();
+    server.listen(PORT, () => {
+      console.log(`Server running on ${PORT}`);
+    });
+  } catch (err) {
+    console.error("Failed to start server:", err);
+  }
 };
 
-startServer();
+// Only start the server when running locally (not on Vercel)
+if (require.main === module) {
+  startServer();
+}
+
+// Export the Express app for Vercel Serverless Functions
+module.exports = app;

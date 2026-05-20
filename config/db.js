@@ -18,7 +18,11 @@ const connectDB = async () => {
     await sql.connect(config);
     console.log("SQL Server Connected");
   } catch (err) {
-    console.log(err);
+    console.error("Database connection failed:", err.message);
+    // Do not throw in production to allow health checks, but log clearly
+    if (process.env.NODE_ENV !== "production") {
+      throw err;
+    }
   }
 };
 
