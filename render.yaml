@@ -11,6 +11,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: USE_HTTPS
+        value: "false"
       - key: DB_DRIVER
         value: postgres
       - key: DATABASE_URL

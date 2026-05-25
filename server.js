@@ -77,7 +77,10 @@ app.use((err, req, res, next) => {
 
 const PORT = parseInt(process.env.PORT || "5000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
+// Render/Railway/Vercel terminate TLS at the edge — app listens HTTP internally.
+const onCloudHost = !!(process.env.RENDER || process.env.RAILWAY_ENVIRONMENT || process.env.VERCEL);
 const USE_HTTPS =
+  !onCloudHost &&
   String(process.env.USE_HTTPS || "")
     .trim()
     .toLowerCase() === "true";
@@ -123,6 +126,9 @@ initSockets(server);
 
 const logServerUrls = () => {
   const protocol = USE_HTTPS ? "https" : "http";
+  if (process.env.RENDER && process.env.RENDER_EXTERNAL_URL) {
+    console.log(`Render URL: ${process.env.RENDER_EXTERNAL_URL}`);
+  }
   console.log(`Server running (${protocol}) on ${HOST}:${PORT}`);
   if (HOST === "0.0.0.0" || HOST === "::") {
     console.log(`  Local:  ${protocol}://127.0.0.1:${PORT}`);
