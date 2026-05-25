@@ -17,12 +17,18 @@ const connectDB = async () => {
   try {
     await sql.connect(config);
     console.log("SQL Server Connected");
+    return true;
   } catch (err) {
     console.error("Database connection failed:", err.message);
-    // Do not throw in production to allow health checks, but log clearly
+    // On Vercel we don't want to crash the serverless function
+    if (process.env.VERCEL) {
+      console.warn("Running on Vercel - continuing without DB connection");
+      return false;
+    }
     if (process.env.NODE_ENV !== "production") {
       throw err;
     }
+    return false;
   }
 };
 

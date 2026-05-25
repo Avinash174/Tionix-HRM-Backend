@@ -1,6 +1,16 @@
 const liveLocationModel = require("../models/liveLocationModel");
+const gpsAttendanceModel = require("../models/gpsAttendanceModel");
+const empGeoLocationModel = require("../models/empGeoLocationModel");
 const { resolveFinalEmpCode } = require("../utils/resolveEmpCode");
-const { emitEvent } = require("../sockets");
+const { getFixedOfficeForEmpId, getDefaultAttendanceRadius } = require("../utils/employeeOffice");
+const { calculateDistance } = require("../utils/locationUtils");
+const { emitEvent, emitToOffice } = require("../sockets");
+const { analyzeGpsPoint } = require("../utils/fakeGpsDetection");
+const {
+  computeLastSeen,
+  computeOfficeStatus,
+  getShiftStatusForEmployee,
+} = require("../utils/trackingEnrichment");
 
 const getPingIntervalSeconds = () =>
   parseInt(process.env.LIVE_LOCATION_PING_INTERVAL_SECONDS || "15", 10);
@@ -8,11 +18,59 @@ const getPingIntervalSeconds = () =>
 const getStaleSeconds = () =>
   parseInt(process.env.LIVE_LOCATION_STALE_SECONDS || "45", 10);
 
+const getBackgroundPingIntervalSeconds = () =>
+  parseInt(
+    process.env.BACKGROUND_LOCATION_PING_INTERVAL_SECONDS ||
+      process.env.LIVE_LOCATION_PING_INTERVAL_SECONDS ||
+      "60",
+    10
+  );
+
 const getTrackingConfig = () => ({
   pingIntervalSeconds: getPingIntervalSeconds(),
   staleAfterSeconds: getStaleSeconds(),
   recommendedPingMs: getPingIntervalSeconds() * 1000,
+  backgroundTracking: {
+    enabled: process.env.BACKGROUND_TRACKING_ENABLED !== "false",
+    pingIntervalSeconds: getBackgroundPingIntervalSeconds(),
+    recommendedBackgroundPingMs: getBackgroundPingIntervalSeconds() * 1000,
+    staleAfterSeconds: parseInt(
+      process.env.BACKGROUND_LOCATION_STALE_SECONDS ||
+        process.env.LIVE_LOCATION_STALE_SECONDS ||
+        "120",
+      10
+    ),
+    allowBackground: process.env.ALLOW_BACKGROUND_LOCATION !== "false",
+  },
+  fakeGpsDetection: {
+    enabled: process.env.FAKE_GPS_DETECTION_ENABLED !== "false",
+    maxSpeedMs: parseFloat(process.env.MAX_GPS_SPEED_MS || "55"),
+  },
 });
+
+const getEmployeeOffice = async (empCode) => {
+  const { office } = await getFixedOfficeForEmpId(empCode);
+  if (!office) return null;
+
+  return {
+    fkEmpId: empCode,
+    fkLocationId: office.locationId,
+    LocationName: office.name,
+    Latitude: office.latitude,
+    Longitude: office.longitude,
+    AllowedRadius: office.allowed_radius,
+    source: "FIXED_CONFIG",
+  };
+};
+
+const toOfficeStatusInput = (office) =>
+  office
+    ? {
+        latitude: office.latitude,
+        longitude: office.longitude,
+        allowedRadius: office.allowed_radius ?? office.radius,
+      }
+    : null;
 
 const recordLocation = async (userId, payload = {}) => {
   const resolved = await resolveFinalEmpCode(userId);
@@ -25,14 +83,24 @@ const recordLocation = async (userId, payload = {}) => {
     throw error;
   }
 
-  const latitude = Number(payload.latitude);
-  const longitude = Number(payload.longitude);
+  const latitude = Number(
+    payload.latitude ?? payload.employee_latitude ?? payload.lat ?? payload.employeeLatitude
+  );
+  const longitude = Number(
+    payload.longitude ?? payload.employee_longitude ?? payload.lng ?? payload.employeeLongitude
+  );
 
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     const error = new Error("Valid latitude and longitude are required");
     error.statusCode = 400;
     throw error;
   }
+
+  const previousPoint = await liveLocationModel.getLatestByEmployee(resolved.empCode);
+  const gpsAnalysis =
+    process.env.FAKE_GPS_DETECTION_ENABLED !== "false"
+      ? analyzeGpsPoint(payload, previousPoint)
+      : { isSuspicious: false, riskScore: 0, flags: [], status: "trusted" };
 
   const inserted = await liveLocationModel.insertLocation({
     empCode: resolved.empCode,
@@ -44,7 +112,60 @@ const recordLocation = async (userId, payload = {}) => {
     speed: payload.speed != null ? Number(payload.speed) : null,
     address: payload.address || null,
     deviceInfo: payload.device_info || payload.deviceInfo || null,
+    isSuspicious: gpsAnalysis.isSuspicious,
+    gpsRiskScore: gpsAnalysis.riskScore,
+    gpsFlags: gpsAnalysis.flags.join(","),
   });
+
+  const { office, assignmentSource: officeSource } = await getFixedOfficeForEmpId(
+    resolved.empCode
+  );
+  const allowedRadius = office?.allowed_radius ?? getDefaultAttendanceRadius();
+  let officeStatus = computeOfficeStatus(latitude, longitude, toOfficeStatusInput(office));
+  let trackingValid = officeStatus.isInsideOfficeRadius === true;
+  let attendanceStatus = "unknown";
+
+  if (!office) {
+    officeStatus = {
+      ...officeStatus,
+      geofenceStatus: "unknown",
+    };
+    attendanceStatus = "no_office_config";
+  } else {
+    attendanceStatus = trackingValid ? "approved" : "rejected";
+  }
+
+  await empGeoLocationModel.insertEmployeeLocation({
+    fkEmpId: resolved.empCode,
+    latitude,
+    longitude,
+    atDate: inserted.recorded_at || new Date(),
+  });
+
+  if (office) {
+    await gpsAttendanceModel.createLiveTrackingRecord({
+      employeeId: resolved.empCode,
+      attendanceType: "LIVE_TRACKING",
+      attendanceDate: gpsAttendanceModel.getAttendanceDate(new Date()),
+      timestamp: inserted.recorded_at || new Date(),
+      employeeLatitude: latitude,
+      employeeLongitude: longitude,
+      officeLatitude: office.latitude,
+      officeLongitude: office.longitude,
+      distanceMeters: officeStatus.distanceFromOfficeMeters ?? calculateDistance(
+        latitude,
+        longitude,
+        office.latitude,
+        office.longitude
+      ),
+      allowedRadiusMeters: allowedRadius,
+      attendanceStatus,
+    });
+  }
+
+  const officeRow = await getEmployeeOffice(resolved.empCode);
+  const lastSeen = computeLastSeen(inserted.recorded_at);
+  const shift = await getShiftStatusForEmployee(resolved.empCode, "Check IN");
 
   const point = {
     empCode: resolved.empCode.toString(),
@@ -58,19 +179,43 @@ const recordLocation = async (userId, payload = {}) => {
     recordedAt: inserted.recorded_at,
     status: "online",
     source: "live_gps",
+    locationId: officeRow?.fkLocationId ?? office?.locationId ?? null,
+    officeName: officeRow?.LocationName ?? office?.name ?? null,
+    officeSource: officeSource || "FIXED_CONFIG",
+    officeLatitude: office?.latitude ?? null,
+    officeLongitude: office?.longitude ?? null,
+    allowedRadiusMeters: allowedRadius,
+    trackingValid,
+    attendanceStatus,
+    matchingRule: "FIXED_OFFICE_GEOFENCE",
+    ...officeStatus,
+    ...lastSeen,
+    shift,
+    gpsTrustStatus: gpsAnalysis.status,
+    isSuspiciousGps: gpsAnalysis.isSuspicious,
+    gpsRiskScore: gpsAnalysis.riskScore,
+    gpsFlags: gpsAnalysis.flags,
   };
 
   emitEvent("employee-live-location", point);
-  emitEvent("employee-location-update", {
-    empCode: point.empCode,
-    empName: point.empName,
-    latitude: point.latitude,
-    longitude: point.longitude,
-    address: point.address,
-    status: "Live",
-    timestamp: point.recordedAt,
-    source: "live_gps",
-  });
+  emitEvent("employee-location-update", point);
+
+  if (point.locationId) {
+    emitToOffice(point.locationId, "employee-live-location", point);
+    emitToOffice(point.locationId, "employee-location-update", point);
+  }
+
+  if (gpsAnalysis.isSuspicious) {
+    emitEvent("gps-suspicious-alert", {
+      empCode: point.empCode,
+      empName: point.empName,
+      latitude,
+      longitude,
+      gpsRiskScore: gpsAnalysis.riskScore,
+      gpsFlags: gpsAnalysis.flags,
+      recordedAt: inserted.recorded_at,
+    });
+  }
 
   return point;
 };
@@ -94,6 +239,10 @@ const getLiveLocations = async (query = {}) => {
       lastActiveAt: row.recorded_at,
       status: row.live_status,
       source: "live_gps",
+      isSuspiciousGps: !!row.is_suspicious,
+      gpsTrustStatus: row.is_suspicious ? "suspicious" : "trusted",
+      gpsRiskScore: row.gps_risk_score,
+      gpsFlags: row.gps_flags ? row.gps_flags.split(",") : [],
     }))
     .filter((row) => {
       if (!search) return true;
@@ -131,6 +280,9 @@ const getEmployeeTrail = async (employeeId, query = {}) => {
       speed: row.speed,
       address: row.address,
       recordedAt: row.recorded_at,
+      isSuspicious: !!row.is_suspicious,
+      gpsRiskScore: row.gps_risk_score,
+      gpsFlags: row.gps_flags,
     })),
   };
 };

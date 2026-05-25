@@ -82,9 +82,17 @@ const buildAttendanceDeviceInfo = ({
 const serializeDeviceInfo = (deviceInfo) => JSON.stringify(deviceInfo);
 
 const resolveAttendanceLocation = async (_userId, latitude, longitude) => {
-  const officeLat = parseFloat(process.env.OFFICE_LAT || "19.123456");
-  const officeLon = parseFloat(process.env.OFFICE_LON || "72.987654");
-  const allowedRadius = parseFloat(process.env.GEFENCE_RADIUS || "100");
+  if (!process.env.OFFICE_LAT || !process.env.OFFICE_LON) {
+    throw new Error("OFFICE_LAT and OFFICE_LON environment variables are required.");
+  }
+  const officeLat = parseFloat(process.env.OFFICE_LAT);
+  const officeLon = parseFloat(process.env.OFFICE_LON);
+  const allowedRadius = Number(process.env.ATTENDANCE_RADIUS_METERS || process.env.GEFENCE_RADIUS);
+  if (!Number.isFinite(allowedRadius) || allowedRadius <= 0) {
+    throw new Error(
+      "ATTENDANCE_RADIUS_METERS or GEFENCE_RADIUS environment variable is required."
+    );
+  }
 
   const distance = getDistance(
     { latitude, longitude },

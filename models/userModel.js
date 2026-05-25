@@ -78,7 +78,7 @@ const User = {
     const result = await new sql.Request()
       .input('pkUserId', sql.VarChar, pkUserId)
       .query(`
-        SELECT pkUserId, UserName, fkEmpId, AttendanceMode, GeofencePoint
+        SELECT pkUserId, UserName, fkEmpId, fkLocationId, AttendanceMode, GeofencePoint
         FROM dbo.AppUser
         WHERE pkUserId = @pkUserId
       `);
@@ -167,7 +167,7 @@ const User = {
 
     const result = await new sql.Request()
       .input('empId', sql.Numeric, parseFloat(empId))
-      .query('SELECT pkUserId, UserName, fkEmpId, AttendanceMode, GeofencePoint, Email, Phone, ProfileImage FROM dbo.AppUser WHERE fkEmpId = @empId');
+      .query('SELECT pkUserId, UserName, fkEmpId, fkLocationId, AttendanceMode, GeofencePoint, Email, Phone, ProfileImage FROM dbo.AppUser WHERE fkEmpId = @empId');
     
     return result.recordset[0];
   },

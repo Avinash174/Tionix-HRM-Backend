@@ -121,15 +121,18 @@ BEGIN
         LocationName NVARCHAR(100) NOT NULL,
         Latitude DECIMAL(10, 7) NOT NULL,
         Longitude DECIMAL(10, 7) NOT NULL,
-        AllowedRadius DECIMAL(10, 2) DEFAULT 100,
+        AllowedRadius DECIMAL(10, 2) DEFAULT 25,
         LocationType NVARCHAR(50) DEFAULT 'OFFICE',
         IsActive BIT DEFAULT 1,
         CreatedAt DATETIME DEFAULT GETDATE()
     );
 
-    -- Insert default office location provided by user (updated to screenshot coords)
-    INSERT INTO dbo.AttendanceLocations (LocationName, Latitude, Longitude, AllowedRadius, LocationType)
-    VALUES ('Main Office', 18.523511, 73.9311385, 100, 'OFFICE');
+    -- No default office location is inserted here.
+    -- The application requires real office coordinates via OFFICE_LAT / OFFICE_LON
+    -- environment variables, or by inserting a record into AttendanceLocations.
+    -- Example (replace with your actual office coordinates):
+    -- INSERT INTO dbo.AttendanceLocations (LocationName, Latitude, Longitude, AllowedRadius, LocationType)
+    -- VALUES ('Main Office', 18.523511, 73.9311385, 25, 'OFFICE');
 END;
 
 IF OBJECT_ID(N'dbo.employee_live_locations', N'U') IS NULL
@@ -148,4 +151,19 @@ BEGIN
         recorded_at DATETIME2 NOT NULL CONSTRAINT DF_employee_live_locations_recorded_at DEFAULT (SYSUTCDATETIME())
     );
     CREATE INDEX IX_employee_live_locations_emp_code ON dbo.employee_live_locations (emp_code, recorded_at DESC);
+END;
+
+IF OBJECT_ID(N'dbo.OfficeGeoFence', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.OfficeGeoFence (
+        pkGeoId INT IDENTITY(1,1) PRIMARY KEY,
+        fkHLId INT NOT NULL,
+        OfficeName NVARCHAR(100) NULL,
+        Latitude DECIMAL(10, 7) NOT NULL,
+        Longitude DECIMAL(10, 7) NOT NULL,
+        RadiusMeters INT NOT NULL DEFAULT 50,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
+    );
+    CREATE INDEX IX_OfficeGeoFence_fkHLId ON dbo.OfficeGeoFence (fkHLId, IsActive);
 END;

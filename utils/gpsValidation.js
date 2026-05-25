@@ -23,8 +23,6 @@ const getAddressesFromCoordinates = async (latitude, longitude) => {
   }
 };
 
-const DEFAULT_OFFICE_RADIUS_METERS = 1000;
-
 const parseCoordinate = (value, label) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -36,17 +34,34 @@ const parseCoordinate = (value, label) => {
   return parsed;
 };
 
-const getOfficeCoordinates = () => ({
-  latitude: parseCoordinate(process.env.OFFICE_LAT || "19.102532", "Office latitude"),
-  longitude: parseCoordinate(process.env.OFFICE_LON || "73.008868", "Office longitude"),
-});
+const getOfficeCoordinates = () => {
+  if (!process.env.OFFICE_LAT || !process.env.OFFICE_LON) {
+    const error = new Error(
+      "OFFICE_LAT and OFFICE_LON environment variables are required. Please configure real office coordinates."
+    );
+    error.statusCode = 500;
+    error.code = "MISSING_OFFICE_COORDINATES";
+    throw error;
+  }
+  return {
+    latitude: parseCoordinate(process.env.OFFICE_LAT, "Office latitude"),
+    longitude: parseCoordinate(process.env.OFFICE_LON, "Office longitude"),
+  };
+};
 
 const getAllowedRadiusMeters = () => {
-  const configuredRadius = Number(process.env.ATTENDANCE_RADIUS_METERS);
+  const configuredRadius = Number(
+    process.env.ATTENDANCE_RADIUS_METERS || process.env.GEFENCE_RADIUS
+  );
   if (Number.isFinite(configuredRadius) && configuredRadius > 0) {
     return configuredRadius;
   }
-  return DEFAULT_OFFICE_RADIUS_METERS;
+  const error = new Error(
+    "ATTENDANCE_RADIUS_METERS or GEFENCE_RADIUS environment variable is required."
+  );
+  error.statusCode = 500;
+  error.code = "MISSING_RADIUS_CONFIG";
+  throw error;
 };
 
 const calculateDistanceMeters = (employeeLatitude, employeeLongitude, officeCoordinates) =>
@@ -55,13 +70,16 @@ const calculateDistanceMeters = (employeeLatitude, employeeLongitude, officeCoor
     { latitude: officeCoordinates.latitude, longitude: officeCoordinates.longitude }
   );
 
-const evaluateGpsAttendance = async (latitude, longitude) => {
+const evaluateGpsAttendance = async (latitude, longitude, allowedRadiusMeters = null) => {
   const employeeLatitude = parseCoordinate(latitude, "Latitude");
   const employeeLongitude = parseCoordinate(longitude, "Longitude");
   const office = getOfficeCoordinates();
-  const allowedRadiusMeters = getAllowedRadiusMeters();
+  const radiusMeters =
+    allowedRadiusMeters != null && Number.isFinite(Number(allowedRadiusMeters))
+      ? Number(allowedRadiusMeters)
+      : getAllowedRadiusMeters();
   const distanceMeters = calculateDistanceMeters(employeeLatitude, employeeLongitude, office);
-  const isWithinRange = distanceMeters <= allowedRadiusMeters;
+  const isWithinRange = distanceMeters <= radiusMeters;
   const employeeAddress = await getAddressesFromCoordinates(employeeLatitude, employeeLongitude);
 
   return {
@@ -71,14 +89,13 @@ const evaluateGpsAttendance = async (latitude, longitude) => {
     officeLatitude: office.latitude,
     officeLongitude: office.longitude,
     distanceMeters,
-    allowedRadiusMeters,
+    allowedRadiusMeters: radiusMeters,
     attendanceStatus: isWithinRange ? "approved" : "rejected",
     isWithinRange,
   };
 };
 
 module.exports = {
-  DEFAULT_OFFICE_RADIUS_METERS,
   evaluateGpsAttendance,
   getAllowedRadiusMeters,
   getOfficeCoordinates,

@@ -1,6 +1,8 @@
 const path = require("path");
 const fs = require("fs/promises");
 const User = require("../models/userModel");
+const salaryStructureModel = require("../models/salaryStructureModel");
+const { resolveFinalEmpCode } = require("../utils/resolveEmpCode");
 
 const toPublicProfile = (row) => {
   if (!row) return null;
@@ -116,10 +118,44 @@ const getProfileByEmpId = async (req, res) => {
   }
 };
 
+const getMySalaryStructure = async (req, res) => {
+  try {
+    const resolved = await resolveFinalEmpCode(req.user?.id);
+    const fkEmpId = resolved?.empCode;
+
+    if (!fkEmpId || !Number.isFinite(Number(fkEmpId))) {
+      return res.status(403).json({
+        success: false,
+        message: "Only employees linked to SalEmployee can view salary structure",
+      });
+    }
+
+    const snapshot = await salaryStructureModel.getLatestSalarySnapshot(fkEmpId);
+
+    return res.json({
+      success: true,
+      exists: snapshot.exists,
+      hasCtc: snapshot.hasCtc,
+      sourceTable: snapshot.sourceTable || "SalStructure",
+      empCode: fkEmpId.toString(),
+      empName: resolved.empName ?? null,
+      salaryStructure: snapshot.salaryStructure,
+      ctc: snapshot.ctc,
+      message: snapshot.exists
+        ? "Latest salary structure found in SalStructure"
+        : "No salary structure found in SalStructure for this employee",
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
   updateProfileImage,
   getProfileByEmpId,
   updateProfileByEmpId,
+  getMySalaryStructure,
 };

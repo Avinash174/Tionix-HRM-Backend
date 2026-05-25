@@ -124,22 +124,19 @@ const Attendance = {
       return result.recordset;
     } catch (error) {
       console.error("Error fetching locations:", error);
-      // Fallback to environment variable if table is missing or empty
-      return [{
-        location_id: 'DEFAULT',
-        location_name: 'Main Office',
-        latitude: parseFloat(process.env.OFFICE_LAT || "19.102532"),
-        longitude: parseFloat(process.env.OFFICE_LON || "73.008868"),
-        allowed_radius: parseFloat(process.env.GEFENCE_RADIUS || "1000"),
-        location_type: 'OFFICE'
-      }];
+      throw new Error(
+        "AttendanceLocations table is unavailable. Configure offices in the database."
+      );
     }
   },
 
   // Fetch a specific attendance location by ID
   getLocationById: async (locationId) => {
+    const parsedId = parseInt(locationId, 10);
+    if (!Number.isFinite(parsedId)) return null;
+
     const result = await new sql.Request()
-      .input('locationId', sql.VarChar, locationId)
+      .input('locationId', sql.Int, parsedId)
       .query(`
         SELECT 
           LocationID as location_id, 

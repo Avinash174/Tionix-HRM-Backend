@@ -2,7 +2,27 @@ const { sql } = require("../../config/db");
 
 const TABLE_NAME = "dbo.OfficeGeoFence";
 
+const ensureOfficeGeoFenceTable = async () => {
+  await new sql.Request().query(`
+    IF OBJECT_ID(N'dbo.OfficeGeoFence', N'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.OfficeGeoFence (
+        pkGeoId INT IDENTITY(1,1) PRIMARY KEY,
+        fkHLId INT NOT NULL,
+        OfficeName NVARCHAR(100) NULL,
+        Latitude DECIMAL(10, 7) NOT NULL,
+        Longitude DECIMAL(10, 7) NOT NULL,
+        RadiusMeters INT NOT NULL DEFAULT 50,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
+      );
+      CREATE INDEX IX_OfficeGeoFence_fkHLId ON dbo.OfficeGeoFence (fkHLId, IsActive);
+    END
+  `);
+};
+
 const listHLGeolocations = async (fkHLId = null) => {
+  await ensureOfficeGeoFenceTable();
   const request = new sql.Request();
   let query = `
     SELECT 
@@ -33,6 +53,7 @@ const listHLGeolocations = async (fkHLId = null) => {
 };
 
 const getHLGeolocationById = async (pkGeoId) => {
+  await ensureOfficeGeoFenceTable();
   const result = await new sql.Request()
     .input("pkGeoId", sql.Int, pkGeoId)
     .query(`
@@ -59,6 +80,7 @@ const getHLGeolocationById = async (pkGeoId) => {
 };
 
 const createHLGeolocation = async ({ fkHLId, OfficeName, Latitude, Longitude, RadiusMeters = 50 }) => {
+  await ensureOfficeGeoFenceTable();
   const result = await new sql.Request()
     .input("fkHLId", sql.Int, fkHLId)
     .input("OfficeName", sql.NVarChar(100), OfficeName || null)
@@ -77,6 +99,7 @@ const createHLGeolocation = async ({ fkHLId, OfficeName, Latitude, Longitude, Ra
 };
 
 const updateHLGeolocation = async (pkGeoId, { OfficeName, Latitude, Longitude, RadiusMeters, IsActive }) => {
+  await ensureOfficeGeoFenceTable();
   const request = new sql.Request().input("pkGeoId", sql.Int, pkGeoId);
 
   const fields = [];
@@ -119,6 +142,7 @@ const updateHLGeolocation = async (pkGeoId, { OfficeName, Latitude, Longitude, R
 };
 
 const deleteHLGeolocation = async (pkGeoId) => {
+  await ensureOfficeGeoFenceTable();
   await new sql.Request()
     .input("pkGeoId", sql.Int, pkGeoId)
     .query(`

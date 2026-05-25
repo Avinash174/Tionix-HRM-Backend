@@ -1,31 +1,39 @@
 const { sql } = require("../../config/db");
 const { parsePagination, buildPaginationMeta } = require("../utils/pagination");
 const { toDateString, getMonthRange } = require("../utils/dateUtils");
+const salaryStructureModel = require("../../models/salaryStructureModel");
 
 const listEmployees = async (query = {}) => {
   const { page, limit, offset } = parsePagination(query);
   const search = query.search ? `%${query.search}%` : null;
+  const locationId = query.locationId ? parseInt(query.locationId, 10) : null;
 
   const result = await new sql.Request()
     .input("search", sql.VarChar, search)
+    .input("locationId", sql.Int, locationId)
     .input("offset", sql.Int, offset)
     .input("limit", sql.Int, limit)
     .query(`
-      SELECT pkUserId, UserName, fkEmpId, Email, Phone, AttendanceMode, GeofencePoint
-      FROM dbo.AppUser
-      WHERE fkEmpId IS NOT NULL
-        AND (@search IS NULL OR UserName LIKE @search OR CAST(fkEmpId AS VARCHAR(20)) LIKE @search)
-      ORDER BY UserName
+      SELECT u.pkUserId, u.UserName, u.fkEmpId, u.Email, u.Phone, u.AttendanceMode,
+             u.GeofencePoint, u.fkLocationId, l.LocationName AS officeName
+      FROM dbo.AppUser u
+      LEFT JOIN dbo.AttendanceLocations l ON u.fkLocationId = l.LocationID
+      WHERE u.fkEmpId IS NOT NULL
+        AND (@search IS NULL OR u.UserName LIKE @search OR CAST(u.fkEmpId AS VARCHAR(20)) LIKE @search)
+        AND (@locationId IS NULL OR u.fkLocationId = @locationId)
+      ORDER BY u.UserName
       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `);
 
   const totalResult = await new sql.Request()
     .input("search", sql.VarChar, search)
+    .input("locationId", sql.Int, locationId)
     .query(`
       SELECT COUNT(*) AS total
-      FROM dbo.AppUser
-      WHERE fkEmpId IS NOT NULL
-        AND (@search IS NULL OR UserName LIKE @search OR CAST(fkEmpId AS VARCHAR(20)) LIKE @search)
+      FROM dbo.AppUser u
+      WHERE u.fkEmpId IS NOT NULL
+        AND (@search IS NULL OR u.UserName LIKE @search OR CAST(u.fkEmpId AS VARCHAR(20)) LIKE @search)
+        AND (@locationId IS NULL OR u.fkLocationId = @locationId)
     `);
 
   const total = Number(totalResult.recordset[0]?.total || 0);
@@ -43,9 +51,11 @@ const resolveEmployee = async (id) => {
     const res = await new sql.Request()
       .input("empId", sql.Numeric, numericId)
       .query(`
-        SELECT pkUserId, UserName, fkEmpId, Email, Phone, AttendanceMode, GeofencePoint
-        FROM dbo.AppUser
-        WHERE fkEmpId = @empId
+        SELECT u.pkUserId, u.UserName, u.fkEmpId, u.Email, u.Phone, u.AttendanceMode,
+               u.GeofencePoint, u.fkLocationId, l.LocationName AS officeName
+        FROM dbo.AppUser u
+        LEFT JOIN dbo.AttendanceLocations l ON u.fkLocationId = l.LocationID
+        WHERE u.fkEmpId = @empId
       `);
     return res.recordset[0];
   }
@@ -53,9 +63,11 @@ const resolveEmployee = async (id) => {
   const res = await new sql.Request()
     .input("pkUserId", sql.VarChar, id)
     .query(`
-      SELECT pkUserId, UserName, fkEmpId, Email, Phone, AttendanceMode, GeofencePoint
-      FROM dbo.AppUser
-      WHERE pkUserId = @pkUserId
+      SELECT u.pkUserId, u.UserName, u.fkEmpId, u.Email, u.Phone, u.AttendanceMode,
+             u.GeofencePoint, u.fkLocationId, l.LocationName AS officeName
+      FROM dbo.AppUser u
+      LEFT JOIN dbo.AttendanceLocations l ON u.fkLocationId = l.LocationID
+      WHERE u.pkUserId = @pkUserId
     `);
   return res.recordset[0];
 };
@@ -68,14 +80,49 @@ const updateEmployee = async (id, patch = {}) => {
   const nextEmail = patch.email ?? employee.Email;
   const nextPhone = patch.phone ?? employee.Phone;
 
+  let nextLocationId = employee.fkLocationId ?? null;
+  if (patch.locationId !== undefined || patch.fkLocationId !== undefined) {
+    const rawLocationId = patch.locationId ?? patch.fkLocationId;
+    if (rawLocationId === null || rawLocationId === "" || rawLocationId === 0) {
+      nextLocationId = null;
+    } else {
+      const parsedLocationId = parseInt(rawLocationId, 10);
+      if (!Number.isFinite(parsedLocationId)) {
+        const error = new Error("Invalid locationId");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const officeResult = await new sql.Request()
+        .input("locationId", sql.Int, parsedLocationId)
+        .query(`
+          SELECT LocationID
+          FROM dbo.AttendanceLocations
+          WHERE LocationID = @locationId AND IsActive = 1
+        `);
+
+      if (!officeResult.recordset[0]) {
+        const error = new Error("Office not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      nextLocationId = parsedLocationId;
+    }
+  }
+
   await new sql.Request()
     .input("pkUserId", sql.VarChar, employee.pkUserId)
     .input("userName", sql.VarChar, nextUserName)
     .input("email", sql.VarChar, nextEmail)
     .input("phone", sql.VarChar, nextPhone)
+    .input("locationId", sql.Int, nextLocationId)
     .query(`
       UPDATE dbo.AppUser
-      SET UserName = @userName, Email = @email, Phone = @phone
+      SET UserName = @userName,
+          Email = @email,
+          Phone = @phone,
+          fkLocationId = @locationId
       WHERE pkUserId = @pkUserId
     `);
 
@@ -125,6 +172,30 @@ const getActivityLogs = async (empCode) => {
   return result.recordset;
 };
 
+const getLatestSalaryStructure = async (id) => {
+  const employee = await resolveEmployee(id);
+  if (!employee) return null;
+
+  const fkEmpId = employee.fkEmpId;
+  if (!fkEmpId) {
+    const error = new Error("Employee is not linked to SalEmployee");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const snapshot = await salaryStructureModel.getLatestSalarySnapshot(fkEmpId);
+
+  return {
+    employee: {
+      pkUserId: employee.pkUserId,
+      userName: employee.UserName,
+      fkEmpId: employee.fkEmpId,
+      officeName: employee.officeName ?? null,
+    },
+    ...snapshot,
+  };
+};
+
 module.exports = {
   listEmployees,
   resolveEmployee,
@@ -132,4 +203,5 @@ module.exports = {
   deleteEmployee,
   getAttendanceSummary,
   getActivityLogs,
+  getLatestSalaryStructure,
 };

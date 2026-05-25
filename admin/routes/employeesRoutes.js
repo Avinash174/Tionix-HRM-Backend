@@ -5,6 +5,7 @@ const adminAuth = require("../middleware/adminAuth");
 const router = express.Router();
 
 router.get("/", adminAuth, employeesController.listEmployees);
+router.get("/:id/salary-structure", adminAuth, employeesController.getEmployeeSalaryStructure);
 router.get("/:id", adminAuth, employeesController.getEmployee);
 router.put("/:id", adminAuth, employeesController.updateEmployee);
 router.delete("/:id", adminAuth, employeesController.deleteEmployee);

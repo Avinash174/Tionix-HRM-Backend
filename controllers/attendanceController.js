@@ -11,6 +11,8 @@ const geocoder = NodeGeocoder({
 const Attendance = require("../models/attendanceModel");
 const User = require("../models/userModel");
 const ShiftModel = require("../models/shiftModel");
+const liveLocationModel = require("../models/liveLocationModel");
+const liveLocationService = require("../services/liveLocationService");
 const {
   validatePunchAgainstShift,
   buildShiftStatusPayload,
@@ -18,6 +20,14 @@ const {
 const { emitEvent } = require("../sockets");
 const marketingService = require("../services/marketingService");
 const { MarketingApiError } = require("../utils/marketingAttendance");
+const {
+  formatOfficeForEmployee,
+  getAssignedOfficeForUser,
+  getAssignedOfficeForEmpId,
+  resolveAttendanceLocationForEmployee,
+  validatePunchAgainstOffice,
+} = require("../utils/employeeOffice");
+const { resolveFinalEmpCode: resolveEmployeeIdentity } = require("../utils/resolveEmpCode");
 const dotenv = require("dotenv");
 dotenv.config();
 
@@ -54,59 +64,46 @@ const checkGeoFenceForAttendanceByUserPoint = async (
     return { ok: false, code: 404, message: "Employee not found" };
   }
 
-  if (!employee.GeofencePoint) {
+  let { office } = await getAssignedOfficeForEmpId(employee.fkEmpId);
+  if (!office) {
+    const { getAllFixedOffices } = require("../config/officeGeofences");
+    const { calculateDistance } = require("../utils/locationUtils");
+    const offices = getAllFixedOffices();
+    let closestOffice = null;
+    let minDistance = Infinity;
+
+    for (const off of offices) {
+      const distance = calculateDistance(
+        parseFloat(punchLat),
+        parseFloat(punchLng),
+        off.latitude,
+        off.longitude
+      );
+      if (distance <= off.allowed_radius) {
+        office = off;
+        break;
+      }
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestOffice = off;
+      }
+    }
+
+    if (!office && closestOffice) {
+      office = closestOffice;
+    }
+  }
+
+  if (!office) {
     return {
       ok: false,
-      code: 400,
-      message: "Geofence point is not configured for this employee",
+      code: 404,
+      message:
+        "Office not assigned to employee. Set AppUser.fkLocationId (1=Kamdenu, 2=Texto, 3=Koparkhairne).",
     };
   }
 
-  const geoPointId = employee.GeofencePoint;
-  const geoLocation = await Attendance.getLocationById(geoPointId);
-  
-  if (!geoLocation) {
-    return { ok: false, code: 404, message: "Linked geofence location not found" };
-  }
-
-  const officeLat = Number(geoLocation.latitude);
-  const officeLng = Number(geoLocation.longitude);
-
-  if (Number.isNaN(officeLat) || Number.isNaN(officeLng)) {
-    return { ok: false, code: 500, message: "Geofence coordinates are invalid on server" };
-  }
-
-  const punchLatNum = Number(punchLat);
-  const punchLngNum = Number(punchLng);
-
-  if (Number.isNaN(punchLatNum) || Number.isNaN(punchLngNum)) {
-    return { ok: false, code: 400, message: "Invalid punch latitude/longitude" };
-  }
-
-  const distance = calculateDistanceInMeters(
-    punchLatNum,
-    punchLngNum,
-    officeLat,
-    officeLng
-  );
-
-  const allowedRadius =
-    geoLocation.allowed_radius != null ? Number(geoLocation.allowed_radius) : 1000;
-
-  const outOfRadiusBy = distance - allowedRadius;
-
-  if (distance <= allowedRadius) {
-    return { ok: true, distance, allowedRadius, outOfRadiusBy: 0, location_name: geoLocation.location_name };
-  }
-
-  return {
-    ok: false,
-    code: 403,
-    message: `Out of location range by ${Math.round(outOfRadiusBy)} meter(s)`,
-    distance,
-    allowedRadius,
-    outOfRadiusBy,
-  };
+  return validatePunchAgainstOffice(office, punchLat, punchLng);
 };
 
 const getMarketingUserId = (req) => req.user?.id;
@@ -127,55 +124,19 @@ const handleMarketingError = (res, error, fallbackMessage) => {
     });
 };
 
-/**
- * Resolves the nearest valid attendance location for an employee
- * @param {string} userId Employee ID/Code
- * @param {number} employeeLatitude Current GPS Latitude
- * @param {number} employeeLongitude Current GPS Longitude
- * @returns {Object} Valid location details
- */
-const resolveAttendanceLocation = async (userId, employeeLatitude, employeeLongitude) => {
-    const locations = await Attendance.getLocations();
-    
-    let nearestLocation = null;
-    let minDistance = Infinity;
-
-    for (const loc of locations) {
-        const distance = calculateDistanceInMeters(
-            parseFloat(employeeLatitude), 
-            parseFloat(employeeLongitude), 
-            parseFloat(loc.latitude), 
-            parseFloat(loc.longitude)
-        );
-
-        if (distance < minDistance) {
-            minDistance = distance;
-            nearestLocation = {
-                ...loc,
-                distance
-            };
-        }
-    }
-
-    if (!nearestLocation || nearestLocation.distance > nearestLocation.allowed_radius) {
-        const distStr = nearestLocation ? `${nearestLocation.distance.toFixed(0)}m` : 'N/A';
-        const allowedStr = nearestLocation ? `${nearestLocation.allowed_radius}m` : 'N/A';
-        const error = new Error(`Out of location range by ${Math.round(nearestLocation ? nearestLocation.distance - nearestLocation.allowed_radius : 0)} meter(s)`);
-        error.statusCode = 403;
-        error.details = { distance: distStr, allowed: allowedStr };
-        throw error;
-    }
-
-        return {
-            location_type: nearestLocation.location_type || 'OFFICE',
-            location_id: nearestLocation.location_id,
-            location_name: nearestLocation.location_name,
-            allowed_radius: nearestLocation.allowed_radius,
-            distance: nearestLocation.distance,
-            matching_rule: "GEOFENCE_STRICT",
-            address: await getAddressesFromCoordinates(employeeLatitude, employeeLongitude)
-        };
-};
+const resolveAttendanceLocation = async (
+  userId,
+  employeeLatitude,
+  employeeLongitude,
+  options = {}
+) =>
+  resolveAttendanceLocationForEmployee(
+    userId,
+    employeeLatitude,
+    employeeLongitude,
+    getAddressesFromCoordinates,
+    options
+  );
 
 const punch_in = async (req, res) => {
     try {
@@ -266,8 +227,8 @@ const markAttendance = async (req, res) => {
         return null;
     };
 
-    const rawLat = getCoord(req.body, ["latitude", "Latitude", "LAT", "lat"]);
-    const rawLon = getCoord(req.body, ["longitude", "Longitude", "LON", "lon"]);
+    const rawLat = getCoord(req.body, ["latitude", "Latitude", "LAT", "lat", "employee_latitude"]);
+    const rawLon = getCoord(req.body, ["longitude", "Longitude", "LON", "lon", "employee_longitude"]);
 
     try {
         if (!finalEmpCode || !finalStatus) {
@@ -300,9 +261,15 @@ const markAttendance = async (req, res) => {
         }
 
         // --- Dynamic Location Resolution ---
-        const locationData = await resolveAttendanceLocation(finalEmpCode, numLat, numLon);
+        const locationData = await resolveAttendanceLocation(finalEmpCode, numLat, numLon, {
+            skipGeofence: finalStatus === "Check OUT",
+        });
         
-        console.log(`GEOFENCE CHECK: Employee ${finalEmpCode} is ${locationData.distance.toFixed(2)}m from ${locationData.location_name}.`);
+        if (locationData.distance != null) {
+            console.log(`GEOFENCE CHECK: Employee ${finalEmpCode} is ${locationData.distance.toFixed(2)}m from ${locationData.location_name}. enforced=${locationData.geofenceEnforced}`);
+        } else {
+            console.log(`GEOFENCE CHECK: Employee ${finalEmpCode} Check OUT — radius not enforced.`);
+        }
 
         // --- Daily Limit Check (Only for IN/OUT) ---
         if (finalStatus === "Check IN" || finalStatus === "Check OUT") {
@@ -663,12 +630,28 @@ const getAttendanceByEmpCode = async (req, res) => {
 const getAttendanceConfig = async (req, res) => {
     try {
         const liveLocationService = require("../services/liveLocationService");
+        const { getDefaultAttendanceRadius } = require("../utils/employeeOffice");
+
+        let assignedOffice = null;
+        let assignmentSource = null;
+
+        if (req.user?.id) {
+            const assignment = await getAssignedOfficeForUser(req.user.id);
+            assignedOffice = formatOfficeForEmployee(assignment.office);
+            assignmentSource = assignment.assignmentSource;
+        }
+
         res.json({
             success: true,
             config: {
-                latitude: parseFloat(process.env.OFFICE_LAT || "19.0959"),
-                longitude: parseFloat(process.env.OFFICE_LON || "73.0205"),
-                radius: parseFloat(process.env.GEFENCE_RADIUS || "1000"),
+                locationId: assignedOffice?.locationId ?? null,
+                officeName: assignedOffice?.name ?? null,
+                radius: assignedOffice?.radius ?? getDefaultAttendanceRadius(),
+                assignedOffice,
+                assignmentSource,
+                officeSource: "FIXED_CONFIG",
+                geofenceValidation: "server_side",
+                note: "Send only employee_latitude and employee_longitude. Office coordinates are fixed on server.",
                 liveTracking: liveLocationService.getTrackingConfig(),
             }
         });
@@ -727,36 +710,65 @@ const getShiftSchedule = async (req, res) => {
 
 const getCurrentStatus = async (req, res) => {
     try {
-        let { empCode } = req.params;
-        
-        // Priority: If authenticated, use the ID from the token
-        let userId = req.user ? req.user.id : empCode;
+        const { empCode: paramEmpCode } = req.params;
+        const userId = req.user?.id || paramEmpCode;
 
         if (!userId) {
             return res.status(400).json({ success: false, message: "User identification is required" });
         }
 
-        let finalEmpCode = userId;
-        try {
-            finalEmpCode = await resolveFinalEmpCode(userId);
-        } catch (err) {
-            console.error("Error resolving EmpCode for status:", err);
+        const resolved = await resolveEmployeeIdentity(userId);
+        const finalEmpCode = resolved?.empCode;
+
+        if (!finalEmpCode || !Number.isFinite(Number(finalEmpCode))) {
+            return res.status(403).json({
+                success: false,
+                message: "This API is for employees only. ADMIN account has no employee record.",
+                hint: "Login with employee account (e.g. Banti) via POST /api/login, not ADMIN.",
+                userId,
+                empCode: null,
+            });
         }
 
-        const lastPunch = await Attendance.getLastPunchToday(finalEmpCode);
+        const empCodeStr = finalEmpCode.toString();
+
+        const lastPunch = await Attendance.getLastPunchToday(empCodeStr);
         const shiftTiming = await ShiftModel.getActiveTimingForEmployee(finalEmpCode);
         const nextPunch =
             !lastPunch || lastPunch.Punch === "Check OUT" ? "Check IN" : "Check OUT";
         const shiftCheck = validatePunchAgainstShift(shiftTiming, nextPunch);
+
+        const latestLive = await liveLocationModel.getLatestByEmployee(empCodeStr);
+        const isOnline = liveLocationService.isLocationOnline(latestLive?.recorded_at);
+
+        const liveLocation = latestLive
+            ? {
+                latitude: Number(latestLive.latitude),
+                longitude: Number(latestLive.longitude),
+                address: latestLive.address,
+                recordedAt: latestLive.recorded_at,
+                accuracyMeters: latestLive.accuracy_meters,
+                heading: latestLive.heading,
+                speed: latestLive.speed,
+                isOnline,
+              }
+            : null;
+
+        const assignment = await getAssignedOfficeForEmpId(finalEmpCode);
+        const office = formatOfficeForEmployee(assignment.office);
 
         res.json({
             success: true,
             status: lastPunch ? lastPunch.Punch : "Not Checked In",
             lastPunchTime: lastPunch ? lastPunch.PunchDatetime : null,
             lastAddress: lastPunch ? lastPunch.Address : null,
-            empCode: finalEmpCode,
+            empCode: empCodeStr,
+            empName: resolved.empName || null,
             nextSuggestedPunch: nextPunch,
             shift: buildShiftStatusPayload(shiftTiming, shiftCheck),
+            office,
+            assignmentSource: assignment.assignmentSource,
+            liveLocation,
         });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });

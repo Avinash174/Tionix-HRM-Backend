@@ -52,9 +52,34 @@ const deleteEmployee = async (req, res, next) => {
   }
 };
 
+const getEmployeeSalaryStructure = async (req, res, next) => {
+  try {
+    const result = await employeesService.getLatestSalaryStructure(req.params.id);
+    if (!result) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    return res.json({
+      success: true,
+      exists: result.exists,
+      hasCtc: result.hasCtc,
+      sourceTable: result.sourceTable || "SalStructure",
+      employee: result.employee,
+      salaryStructure: result.salaryStructure,
+      ctc: result.ctc,
+      message: result.exists
+        ? "Latest salary structure found in SalStructure"
+        : "No salary structure found in SalStructure for this employee",
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
   listEmployees,
   getEmployee,
   updateEmployee,
   deleteEmployee,
+  getEmployeeSalaryStructure,
 };

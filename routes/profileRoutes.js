@@ -8,6 +8,7 @@ const {
   updateProfileImage,
   getProfileByEmpId,
   updateProfileByEmpId,
+  getMySalaryStructure,
 } = require("../controllers/profileController");
 
 const uploadImageMiddleware = (req, res, next) => {
@@ -20,6 +21,7 @@ const uploadImageMiddleware = (req, res, next) => {
 };
 
 router.get("/", authMiddleware, getProfile);
+router.get("/salary-structure", authMiddleware, getMySalaryStructure);
 router.put("/", authMiddleware, updateProfile);
 router.put("/image", authMiddleware, uploadImageMiddleware, updateProfileImage);
 router.get("/emp/:empId", authMiddleware, getProfileByEmpId);

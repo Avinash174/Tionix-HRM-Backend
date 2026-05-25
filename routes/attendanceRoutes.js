@@ -24,6 +24,7 @@ router.post("/geofence", authMiddleware, upload.none(), markGeofenceAttendance);
 router.post("/checkout", authMiddleware, upload.none(), checkout);
 router.get("/employee/:empCode", authMiddleware, getAttendanceByEmpCode);
 router.get("/config", authMiddleware, getAttendanceConfig);
+router.get("/status", authMiddleware, getCurrentStatus);
 router.get("/status/:empCode", authMiddleware, getCurrentStatus);
 router.get("/shift", authMiddleware, getShiftSchedule);
 router.get("/shift/:empCode", authMiddleware, getShiftSchedule);

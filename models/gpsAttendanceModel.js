@@ -3,6 +3,52 @@ const { sql } = require("../config/db");
 const getAttendanceDate = (date = new Date()) =>
   date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
+const createLiveTrackingRecord = async (record) => {
+  const result = await new sql.Request()
+    .input("employeeId", sql.VarChar, record.employeeId.toString())
+    .input("attendanceType", sql.VarChar, record.attendanceType || "LIVE_TRACKING")
+    .input("attendanceDate", sql.Date, record.attendanceDate)
+    .input("recordedAt", sql.DateTime2, record.timestamp || new Date())
+    .input("employeeLatitude", sql.Numeric, record.employeeLatitude)
+    .input("employeeLongitude", sql.Numeric, record.employeeLongitude)
+    .input("officeLatitude", sql.Numeric, record.officeLatitude)
+    .input("officeLongitude", sql.Numeric, record.officeLongitude)
+    .input("distanceMeters", sql.Numeric, record.distanceMeters)
+    .input("allowedRadiusMeters", sql.Numeric, record.allowedRadiusMeters)
+    .input("attendanceStatus", sql.VarChar, record.attendanceStatus)
+    .query(`
+      INSERT INTO dbo.gps_attendance_logs (
+        employee_id,
+        attendance_type,
+        attendance_date,
+        recorded_at,
+        employee_latitude,
+        employee_longitude,
+        office_latitude,
+        office_longitude,
+        distance_meters,
+        allowed_radius_meters,
+        attendance_status
+      )
+      OUTPUT INSERTED.*
+      VALUES (
+        @employeeId,
+        @attendanceType,
+        @attendanceDate,
+        @recordedAt,
+        @employeeLatitude,
+        @employeeLongitude,
+        @officeLatitude,
+        @officeLongitude,
+        @distanceMeters,
+        @allowedRadiusMeters,
+        @attendanceStatus
+      )
+    `);
+
+  return mapAttendanceRow(result.recordset[0]);
+};
+
 const createAttendanceRecord = async (record) => {
   const result = await new sql.Request()
     .input('employeeId', sql.VarChar, record.employeeId)
@@ -121,6 +167,7 @@ const mapAttendanceRow = (row) => {
 
 module.exports = {
   createAttendanceRecord,
+  createLiveTrackingRecord,
   findAttendanceByEmployee,
   findAttendanceForDate,
   getAttendanceDate,
