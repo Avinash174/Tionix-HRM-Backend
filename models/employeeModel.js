@@ -1,59 +1,42 @@
-const { sql } = require("../config/db");
+const { query } = require("../config/db");
 
 const Employee = {
   findAll: async () => {
-    const result = await new sql.Request().query('SELECT * FROM Employees');
-    return result.recordset;
+    const result = await query(`SELECT * FROM "Employees"`);
+    return result.rows;
   },
 
   findById: async (id) => {
-    const result = await new sql.Request()
-      .input('id', sql.Int, id)
-      .query('SELECT * FROM Employees WHERE id = @id');
-    return result.recordset[0];
+    const result = await query(
+      `SELECT * FROM "Employees" WHERE id = $1`,
+      [id]
+    );
+    return result.rows[0];
   },
 
   create: async (data) => {
     const { firstName, lastName, email, phone, position, department, salary } = data;
-    await new sql.Request()
-      .input('firstName', sql.VarChar, firstName)
-      .input('lastName', sql.VarChar, lastName)
-      .input('email', sql.VarChar, email)
-      .input('phone', sql.VarChar, phone)
-      .input('position', sql.VarChar, position)
-      .input('department', sql.VarChar, department)
-      .input('salary', sql.Numeric, salary)
-      .query(`
-        INSERT INTO Employees (firstName, lastName, email, phone, position, department, salary) 
-        VALUES (@firstName, @lastName, @email, @phone, @position, @department, @salary)
-      `);
+    await query(
+      `INSERT INTO "Employees" ("firstName", "lastName", "email", "phone", "position", "department", "salary")
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [firstName, lastName, email, phone, position, department, salary]
+    );
   },
 
   update: async (id, data) => {
     const { firstName, lastName, email, phone, position, department, salary } = data;
-    await new sql.Request()
-      .input('id', sql.Int, id)
-      .input('firstName', sql.VarChar, firstName)
-      .input('lastName', sql.VarChar, lastName)
-      .input('email', sql.VarChar, email)
-      .input('phone', sql.VarChar, phone)
-      .input('position', sql.VarChar, position)
-      .input('department', sql.VarChar, department)
-      .input('salary', sql.Numeric, salary)
-      .query(`
-        UPDATE Employees 
-        SET firstName = @firstName, lastName = @lastName, email = @email, 
-            phone = @phone, position = @position, department = @department, 
-            salary = @salary 
-        WHERE id = @id
-      `);
+    await query(
+      `UPDATE "Employees"
+       SET "firstName" = $1, "lastName" = $2, "email" = $3,
+           "phone" = $4, "position" = $5, "department" = $6, "salary" = $7
+       WHERE id = $8`,
+      [firstName, lastName, email, phone, position, department, salary, id]
+    );
   },
 
   delete: async (id) => {
-    await new sql.Request()
-      .input('id', sql.Int, id)
-      .query('DELETE FROM Employees WHERE id = @id');
-  }
+    await query(`DELETE FROM "Employees" WHERE id = $1`, [id]);
+  },
 };
 
 module.exports = Employee;

@@ -1,68 +1,49 @@
-const { sql } = require("../config/db");
+const { query } = require("../config/db");
 
-/**
- * Active employee timing: SalEmpTiming (per employee) first, then SalShiftTiming via SalEmployee.fkSTId.
- */
 const getActiveTimingForEmployee = async (fkEmpId) => {
   if (fkEmpId == null || fkEmpId === "") return null;
-
   const empIdNum = Number(fkEmpId);
   if (!Number.isFinite(empIdNum)) return null;
 
-  const empTiming = await new sql.Request()
-    .input("empId", sql.Numeric, empIdNum)
-    .query(`
-      SELECT TOP 1
-        et.pkWTId,
-        et.fkEmpId,
-        et.Shift AS shiftName,
-        et.SWork,
-        et.EWork,
-        et.SBreak,
-        et.EBreak,
-        et.TWork,
-        et.TBreak,
-        et.fkSTId,
-        et.Type AS timingType,
-        et.TSD,
-        et.TED,
-        'SalEmpTiming' AS source
-      FROM dbo.SalEmpTiming et
-      WHERE et.fkEmpId = @empId
-        AND et.TSD <= CAST(GETDATE() AS DATE)
-        AND (et.TED IS NULL OR et.TED >= CAST(GETDATE() AS DATE))
-      ORDER BY et.TSD DESC
-    `);
+  const empTiming = await query(
+    `SELECT
+       et."pkWTId", et."fkEmpId",
+       et."Shift" AS "shiftName",
+       et."SWork", et."EWork", et."SBreak", et."EBreak",
+       et."TWork", et."TBreak", et."fkSTId",
+       et."Type" AS "timingType",
+       et."TSD", et."TED",
+       'SalEmpTiming' AS source
+     FROM "SalEmpTiming" et
+     WHERE et."fkEmpId" = $1
+       AND et."TSD" <= CURRENT_DATE
+       AND (et."TED" IS NULL OR et."TED" >= CURRENT_DATE)
+     ORDER BY et."TSD" DESC
+     LIMIT 1`,
+    [empIdNum]
+  );
 
-  if (empTiming.recordset[0]) {
-    return normalizeTimingRow(empTiming.recordset[0]);
+  if (empTiming.rows[0]) {
+    return normalizeTimingRow(empTiming.rows[0]);
   }
 
-  const shiftFromEmployee = await new sql.Request()
-    .input("empId", sql.Numeric, empIdNum)
-    .query(`
-      SELECT TOP 1
-        e.pkEmpId AS fkEmpId,
-        e.fkSTId,
-        e.EmpCode,
-        e.Employee AS employeeName,
-        st.Shift AS shiftName,
-        st.SWork,
-        st.EWork,
-        st.SBreak,
-        st.EBreak,
-        st.TWork,
-        st.TBreak,
-        'SalShiftTiming' AS source
-      FROM dbo.SalEmployee e
-      LEFT JOIN dbo.SalShiftTiming st ON st.pkSTId = e.fkSTId
-      WHERE e.pkEmpId = @empId
-    `);
+  const shiftFromEmployee = await query(
+    `SELECT
+       e."pkEmpId" AS "fkEmpId", e."fkSTId", e."EmpCode",
+       e."Employee" AS "employeeName",
+       st."Shift" AS "shiftName",
+       st."SWork", st."EWork", st."SBreak", st."EBreak",
+       st."TWork", st."TBreak",
+       'SalShiftTiming' AS source
+     FROM "SalEmployee" e
+     LEFT JOIN "SalShiftTiming" st ON st."pkSTId" = e."fkSTId"
+     WHERE e."pkEmpId" = $1
+     LIMIT 1`,
+    [empIdNum]
+  );
 
-  const row = shiftFromEmployee.recordset[0];
-  if (!row || !row.SWork || !row.EWork) {
-    return null;
-  }
+  const row = shiftFromEmployee.rows[0];
+  if (!row || !row.SWork || !row.EWork) return null;
 
   return normalizeTimingRow(row);
 };
@@ -87,15 +68,14 @@ const getEmployeeSummary = async (fkEmpId) => {
   const empIdNum = Number(fkEmpId);
   if (!Number.isFinite(empIdNum)) return null;
 
-  const result = await new sql.Request()
-    .input("empId", sql.Numeric, empIdNum)
-    .query(`
-      SELECT TOP 1 pkEmpId, EmpCode, Employee, fkSTId, fkDepId, fkDegId
-      FROM dbo.SalEmployee
-      WHERE pkEmpId = @empId
-    `);
-
-  return result.recordset[0] || null;
+  const result = await query(
+    `SELECT "pkEmpId", "EmpCode", "Employee", "fkSTId", "fkDepId", "fkDegId"
+     FROM "SalEmployee"
+     WHERE "pkEmpId" = $1
+     LIMIT 1`,
+    [empIdNum]
+  );
+  return result.rows[0] || null;
 };
 
 module.exports = {

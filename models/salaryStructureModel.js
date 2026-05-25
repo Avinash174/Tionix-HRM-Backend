@@ -1,4 +1,4 @@
-const { sql } = require("../config/db");
+const { query } = require("../config/db");
 
 const SALARY_STRUCTURE_TABLE = "SalStructure";
 const SALARY_CTC_TABLE = "SalCTC";
@@ -43,71 +43,57 @@ const mapCtcRow = (row) =>
 
 const getLatestOfficeLocationByEmpId = async (fkEmpId) => {
   if (fkEmpId == null || fkEmpId === "") return null;
-
   const empIdNum = Number(fkEmpId);
   if (!Number.isFinite(empIdNum)) return null;
 
-  const result = await new sql.Request()
-    .input("empId", sql.Numeric, empIdNum)
-    .query(`
-      SELECT TOP 1
-        s.pkSSId,
-        s.fkEmpId,
-        s.Latitude,
-        s.Longitude,
-        s.SalStart,
-        e.Employee,
-        e.EmpCode
-      FROM dbo.${SALARY_STRUCTURE_TABLE} s
-      LEFT JOIN dbo.SalEmployee e ON e.pkEmpId = s.fkEmpId
-      WHERE s.fkEmpId = @empId
-      ORDER BY s.SalStart DESC, s.DateTimestamp DESC
-    `);
-
-  return result.recordset[0] || null;
+  const result = await query(
+    `SELECT s."pkSSId", s."fkEmpId", s."Latitude", s."Longitude", s."SalStart",
+            e."Employee", e."EmpCode"
+     FROM "${SALARY_STRUCTURE_TABLE}" s
+     LEFT JOIN "SalEmployee" e ON e."pkEmpId" = s."fkEmpId"
+     WHERE s."fkEmpId" = $1
+     ORDER BY s."SalStart" DESC, s."DateTimestamp" DESC
+     LIMIT 1`,
+    [empIdNum]
+  );
+  return result.rows[0] || null;
 };
 
 const getLatestByEmpId = async (fkEmpId) => {
   if (fkEmpId == null || fkEmpId === "") return null;
-
   const empIdNum = Number(fkEmpId);
   if (!Number.isFinite(empIdNum)) return null;
 
-  const result = await new sql.Request()
-    .input("empId", sql.Numeric, empIdNum)
-    .query(`
-      SELECT TOP 1
-        s.pkSSId, s.fkEmpId, s.SalStart, s.Basic, s.Allowance, s.Travelling,
-        s.Housing, s.Daily, s.Incentive, s.Education, s.Medical, s.Other,
-        s.SalGross, s.CalPF, s.CalESIC, s.CalTDS, s.CalPT,
-        s.LastStatus, s.DateTimestamp, s.Remarks,
-        e.Employee, e.EmpCode
-      FROM dbo.${SALARY_STRUCTURE_TABLE} s
-      LEFT JOIN dbo.SalEmployee e ON e.pkEmpId = s.fkEmpId
-      WHERE s.fkEmpId = @empId
-      ORDER BY s.SalStart DESC, s.DateTimestamp DESC
-    `);
-
-  return result.recordset[0] ? mapStructureRow(result.recordset[0]) : null;
+  const result = await query(
+    `SELECT s."pkSSId", s."fkEmpId", s."SalStart", s."Basic", s."Allowance", s."Travelling",
+            s."Housing", s."Daily", s."Incentive", s."Education", s."Medical", s."Other",
+            s."SalGross", s."CalPF", s."CalESIC", s."CalTDS", s."CalPT",
+            s."LastStatus", s."DateTimestamp", s."Remarks",
+            e."Employee", e."EmpCode"
+     FROM "${SALARY_STRUCTURE_TABLE}" s
+     LEFT JOIN "SalEmployee" e ON e."pkEmpId" = s."fkEmpId"
+     WHERE s."fkEmpId" = $1
+     ORDER BY s."SalStart" DESC, s."DateTimestamp" DESC
+     LIMIT 1`,
+    [empIdNum]
+  );
+  return result.rows[0] ? mapStructureRow(result.rows[0]) : null;
 };
 
 const getLatestCtcByEmpId = async (fkEmpId) => {
   if (fkEmpId == null || fkEmpId === "") return null;
-
   const empIdNum = Number(fkEmpId);
   if (!Number.isFinite(empIdNum)) return null;
 
-  const result = await new sql.Request()
-    .input("empId", sql.Numeric, empIdNum)
-    .query(`
-      SELECT TOP 1
-        pkCTCId, fkEmpId, CTC, StartDate, ValidTill, LastStatus, DateTimestamp
-      FROM dbo.${SALARY_CTC_TABLE}
-      WHERE fkEmpId = @empId
-      ORDER BY StartDate DESC, DateTimestamp DESC
-    `);
-
-  return mapCtcRow(result.recordset[0] || null);
+  const result = await query(
+    `SELECT "pkCTCId", "fkEmpId", "CTC", "StartDate", "ValidTill", "LastStatus", "DateTimestamp"
+     FROM "${SALARY_CTC_TABLE}"
+     WHERE "fkEmpId" = $1
+     ORDER BY "StartDate" DESC, "DateTimestamp" DESC
+     LIMIT 1`,
+    [empIdNum]
+  );
+  return mapCtcRow(result.rows[0] || null);
 };
 
 const getLatestSalarySnapshot = async (fkEmpId) => {
@@ -115,7 +101,6 @@ const getLatestSalarySnapshot = async (fkEmpId) => {
     getLatestByEmpId(fkEmpId),
     getLatestCtcByEmpId(fkEmpId),
   ]);
-
   return {
     exists: !!salaryStructure,
     sourceTable: SALARY_STRUCTURE_TABLE,

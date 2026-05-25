@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { sql } = require("../../config/db");
+const { query } = require("../../config/db");
 
 const ACCESS_EXPIRES = process.env.ADMIN_JWT_EXPIRES || "2h";
 const REFRESH_EXPIRES = process.env.ADMIN_REFRESH_EXPIRES || "7d";
@@ -12,137 +12,111 @@ let tableReady = false;
 const ensureAdminSessionsTable = async () => {
   if (tableReady) return;
 
-  await new sql.Request().query(`
-    IF OBJECT_ID(N'dbo.AdminSessions', N'U') IS NULL
-    BEGIN
-      CREATE TABLE dbo.AdminSessions (
-        SessionID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-        AdminUserId NVARCHAR(50) NOT NULL,
-        RefreshToken NVARCHAR(500) NOT NULL,
-        DeviceInfo NVARCHAR(500) NULL,
-        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_AdminSessions_CreatedAt DEFAULT (SYSUTCDATETIME()),
-        ExpiresAt DATETIME2 NOT NULL
-      );
-      CREATE INDEX IX_AdminSessions_AdminUserId ON dbo.AdminSessions (AdminUserId);
-      CREATE UNIQUE INDEX UX_AdminSessions_RefreshToken ON dbo.AdminSessions (RefreshToken);
-    END
+  await query(`
+    CREATE TABLE IF NOT EXISTS "AdminSessions" (
+      "SessionID"    SERIAL PRIMARY KEY,
+      "AdminUserId"  VARCHAR(50)  NOT NULL,
+      "RefreshToken" VARCHAR(500) NOT NULL,
+      "DeviceInfo"   VARCHAR(500) NULL,
+      "CreatedAt"    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+      "ExpiresAt"    TIMESTAMPTZ  NOT NULL
+    )
+  `);
+  await query(`
+    CREATE INDEX IF NOT EXISTS ix_admin_sessions_user_id
+      ON "AdminSessions" ("AdminUserId")
+  `);
+  await query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_admin_sessions_refresh_token
+      ON "AdminSessions" ("RefreshToken")
   `);
 
   tableReady = true;
 };
 
-const buildAccessToken = (admin, sessionId) => {
-  return jwt.sign(
-    {
-      id: admin.pkUserId,
-      username: admin.UserName,
-      role: "admin",
-      sid: sessionId,
-    },
+const buildAccessToken = (admin, sessionId) =>
+  jwt.sign(
+    { id: admin.pkUserId, username: admin.UserName, role: "admin", sid: sessionId },
     JWT_SECRET,
     { expiresIn: ACCESS_EXPIRES }
   );
-};
 
-const buildRefreshToken = (admin, sessionId) => {
-  return jwt.sign(
-    {
-      id: admin.pkUserId,
-      username: admin.UserName,
-      role: "admin",
-      sid: sessionId,
-    },
+const buildRefreshToken = (admin, sessionId) =>
+  jwt.sign(
+    { id: admin.pkUserId, username: admin.UserName, role: "admin", sid: sessionId },
     JWT_REFRESH_SECRET,
     { expiresIn: REFRESH_EXPIRES }
   );
-};
 
 const createSession = async (admin, deviceInfo = null) => {
   await ensureAdminSessionsTable();
 
-  const placeholder = await new sql.Request()
-    .input("adminUserId", sql.NVarChar, admin.pkUserId)
-    .input("deviceInfo", sql.NVarChar, deviceInfo)
-    .input("expiresAt", sql.DateTime2, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
-    .query(`
-      INSERT INTO dbo.AdminSessions (AdminUserId, RefreshToken, DeviceInfo, ExpiresAt)
-      OUTPUT INSERTED.SessionID
-      VALUES (@adminUserId, 'pending', @deviceInfo, @expiresAt)
-    `);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  const sessionId = placeholder.recordset[0].SessionID;
+  // Insert placeholder, get session ID
+  const placeholder = await query(
+    `INSERT INTO "AdminSessions" ("AdminUserId", "RefreshToken", "DeviceInfo", "ExpiresAt")
+     VALUES ($1, 'pending', $2, $3)
+     RETURNING "SessionID"`,
+    [admin.pkUserId, deviceInfo, expiresAt]
+  );
+
+  const sessionId = placeholder.rows[0].SessionID;
   const refreshToken = buildRefreshToken(admin, sessionId);
   const accessToken = buildAccessToken(admin, sessionId);
 
-  await new sql.Request()
-    .input("sessionId", sql.Int, sessionId)
-    .input("refreshToken", sql.NVarChar, refreshToken)
-    .query(`
-      UPDATE dbo.AdminSessions
-      SET RefreshToken = @refreshToken
-      WHERE SessionID = @sessionId
-    `);
+  await query(
+    `UPDATE "AdminSessions" SET "RefreshToken" = $1 WHERE "SessionID" = $2`,
+    [refreshToken, sessionId]
+  );
 
-  return {
-    sessionId,
-    accessToken,
-    refreshToken,
-    expiresIn: ACCESS_EXPIRES,
-  };
+  return { sessionId, accessToken, refreshToken, expiresIn: ACCESS_EXPIRES };
 };
 
 const findSessionByRefreshToken = async (refreshToken) => {
   await ensureAdminSessionsTable();
-
-  const result = await new sql.Request()
-    .input("refreshToken", sql.NVarChar, refreshToken)
-    .query(`
-      SELECT SessionID, AdminUserId, RefreshToken, DeviceInfo, CreatedAt, ExpiresAt
-      FROM dbo.AdminSessions
-      WHERE RefreshToken = @refreshToken
-        AND ExpiresAt > SYSUTCDATETIME()
-    `);
-
-  return result.recordset[0] || null;
+  const result = await query(
+    `SELECT "SessionID", "AdminUserId", "RefreshToken", "DeviceInfo", "CreatedAt", "ExpiresAt"
+     FROM "AdminSessions"
+     WHERE "RefreshToken" = $1 AND "ExpiresAt" > NOW()`,
+    [refreshToken]
+  );
+  return result.rows[0] || null;
 };
 
 const findSessionById = async (sessionId) => {
   await ensureAdminSessionsTable();
-
-  const result = await new sql.Request()
-    .input("sessionId", sql.Int, sessionId)
-    .query(`
-      SELECT SessionID, AdminUserId, RefreshToken, DeviceInfo, CreatedAt, ExpiresAt
-      FROM dbo.AdminSessions
-      WHERE SessionID = @sessionId
-        AND ExpiresAt > SYSUTCDATETIME()
-    `);
-
-  return result.recordset[0] || null;
+  const result = await query(
+    `SELECT "SessionID", "AdminUserId", "RefreshToken", "DeviceInfo", "CreatedAt", "ExpiresAt"
+     FROM "AdminSessions"
+     WHERE "SessionID" = $1 AND "ExpiresAt" > NOW()`,
+    [sessionId]
+  );
+  return result.rows[0] || null;
 };
 
 const deleteSessionByRefreshToken = async (refreshToken) => {
   await ensureAdminSessionsTable();
-
-  await new sql.Request()
-    .input("refreshToken", sql.NVarChar, refreshToken)
-    .query(`DELETE FROM dbo.AdminSessions WHERE RefreshToken = @refreshToken`);
+  await query(
+    `DELETE FROM "AdminSessions" WHERE "RefreshToken" = $1`,
+    [refreshToken]
+  );
 };
 
 const deleteSessionById = async (sessionId) => {
   await ensureAdminSessionsTable();
-
-  await new sql.Request()
-    .input("sessionId", sql.Int, sessionId)
-    .query(`DELETE FROM dbo.AdminSessions WHERE SessionID = @sessionId`);
+  await query(
+    `DELETE FROM "AdminSessions" WHERE "SessionID" = $1`,
+    [sessionId]
+  );
 };
 
 const deleteAllSessionsForAdmin = async (adminUserId) => {
   await ensureAdminSessionsTable();
-
-  await new sql.Request()
-    .input("adminUserId", sql.NVarChar, adminUserId)
-    .query(`DELETE FROM dbo.AdminSessions WHERE AdminUserId = @adminUserId`);
+  await query(
+    `DELETE FROM "AdminSessions" WHERE "AdminUserId" = $1`,
+    [adminUserId]
+  );
 };
 
 const refreshSession = async (refreshToken) => {
@@ -170,16 +144,15 @@ const refreshSession = async (refreshToken) => {
     throw error;
   }
 
-  const adminResult = await new sql.Request()
-    .input("adminUserId", sql.NVarChar, session.AdminUserId)
-    .query(`
-      SELECT TOP 1 pkUserId, UserName, fkECId, SysDefined
-      FROM dbo.AppUser
-      WHERE pkUserId = @adminUserId
-        AND SysDefined = 1
-    `);
+  const adminResult = await query(
+    `SELECT "pkUserId", "UserName", "fkECId", "SysDefined"
+     FROM "AppUser"
+     WHERE "pkUserId" = $1 AND "SysDefined" = true
+     LIMIT 1`,
+    [session.AdminUserId]
+  );
 
-  const admin = adminResult.recordset[0];
+  const admin = adminResult.rows[0];
   if (!admin) {
     await deleteSessionByRefreshToken(refreshToken);
     const error = new Error("Admin account is no longer active.");
@@ -188,24 +161,19 @@ const refreshSession = async (refreshToken) => {
   }
 
   await deleteSessionById(session.SessionID);
-
   return createSession(admin, session.DeviceInfo);
 };
 
 const listActiveSessions = async (adminUserId) => {
   await ensureAdminSessionsTable();
-
-  const result = await new sql.Request()
-    .input("adminUserId", sql.NVarChar, adminUserId)
-    .query(`
-      SELECT SessionID, DeviceInfo, CreatedAt, ExpiresAt
-      FROM dbo.AdminSessions
-      WHERE AdminUserId = @adminUserId
-        AND ExpiresAt > SYSUTCDATETIME()
-      ORDER BY CreatedAt DESC
-    `);
-
-  return result.recordset;
+  const result = await query(
+    `SELECT "SessionID", "DeviceInfo", "CreatedAt", "ExpiresAt"
+     FROM "AdminSessions"
+     WHERE "AdminUserId" = $1 AND "ExpiresAt" > NOW()
+     ORDER BY "CreatedAt" DESC`,
+    [adminUserId]
+  );
+  return result.rows;
 };
 
 module.exports = {

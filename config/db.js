@@ -1,32 +1,19 @@
-const sql = require("mssql");
+const { Pool } = require("pg");
 require("dotenv").config();
 
-const isAzure = (process.env.DB_SERVER || "").includes("database.windows.net");
-
-const config = {
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  server: process.env.DB_SERVER,
-  database: process.env.DB_DATABASE,
-  port: parseInt(process.env.DB_PORT) || 1433,
-  options: {
-    trustServerCertificate: !isAzure,  // false for Azure, true for local
-    encrypt: isAzure,                  // true for Azure, false for local
-  },
-};
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }, // required for Supabase
+});
 
 const connectDB = async () => {
   try {
-    await sql.connect(config);
-    console.log("SQL Server Connected");
+    const client = await pool.connect();
+    client.release();
+    console.log("PostgreSQL (Supabase) Connected");
     return true;
   } catch (err) {
     console.error("Database connection failed:", err.message);
-    // On Vercel we don't want to crash the serverless function
-    if (process.env.VERCEL) {
-      console.warn("Running on Vercel - continuing without DB connection");
-      return false;
-    }
     if (process.env.NODE_ENV !== "production") {
       throw err;
     }
@@ -34,7 +21,12 @@ const connectDB = async () => {
   }
 };
 
+// Helper: run a parameterized query
+// mssql used @paramName, pg uses $1, $2 — this helper handles that automatically
+const query = (text, params) => pool.query(text, params);
+
 module.exports = {
-  sql,
+  pool,
+  query,
   connectDB,
 };

@@ -1,22 +1,21 @@
-const { sql } = require("../../config/db");
+const { query } = require("../../config/db");
 const adminSessionService = require("./adminSessionService");
 
 const loginAdmin = async (username, password, deviceInfo = null) => {
   const trimmedUser = (username || "").trim();
   const trimmedPass = (password || "").trim();
 
-  const result = await new sql.Request()
-    .input("username", sql.NVarChar, trimmedUser)
-    .input("password", sql.NVarChar, trimmedPass)
-    .query(`
-      SELECT TOP 1 pkUserId, UserName, fkECId, SysDefined, fkEmpId
-      FROM dbo.AppUser
-      WHERE LTRIM(RTRIM(UserName)) = @username
-        AND LTRIM(RTRIM(Password)) = @password
-        AND SysDefined = 1
-    `);
+  const result = await query(
+    `SELECT "pkUserId", "UserName", "fkECId", "SysDefined", "fkEmpId"
+     FROM "AppUser"
+     WHERE TRIM("UserName") = $1
+       AND TRIM("Password") = $2
+       AND "SysDefined" = true
+     LIMIT 1`,
+    [trimmedUser, trimmedPass]
+  );
 
-  const admin = result.recordset[0];
+  const admin = result.rows[0];
   if (!admin) {
     const error = new Error("Invalid admin credentials. Only admin accounts can access the admin panel.");
     error.statusCode = 401;
@@ -35,14 +34,13 @@ const loginAdmin = async (username, password, deviceInfo = null) => {
 };
 
 const getAdminProfile = async (adminId) => {
-  const result = await new sql.Request()
-    .input("adminId", sql.VarChar, adminId)
-    .query(`
-      SELECT pkUserId, UserName, fkECId, LastStatus
-      FROM dbo.AppUser
-      WHERE pkUserId = @adminId
-    `);
-  return result.recordset[0];
+  const result = await query(
+    `SELECT "pkUserId", "UserName", "fkECId", "LastStatus"
+     FROM "AppUser"
+     WHERE "pkUserId" = $1`,
+    [adminId]
+  );
+  return result.rows[0];
 };
 
 const logoutAdmin = async (refreshToken, sessionId = null) => {

@@ -1,127 +1,92 @@
-const { sql } = require("../config/db");
+const { query } = require("../config/db");
 
 const Attendance = {
   // Get recent 50 attendance records
   getRecentAttendance: async () => {
-    const result = await new sql.Request().query(`
-      SELECT TOP 50 * FROM Attendance ORDER BY PunchDatetime DESC
-    `);
-    return result.recordset;
+    const result = await query(
+      `SELECT * FROM "Attendance" ORDER BY "PunchDatetime" DESC LIMIT 50`
+    );
+    return result.rows;
   },
 
-  // Get attendance for a specific employee by EmpCode (Standardized History)
+  // Get attendance for a specific employee by EmpCode
   getByEmpCode: async (empCode) => {
-    const result = await new sql.Request()
-      .input('empCode', sql.VarChar, empCode.toString())
-      .query(`
-        SELECT TOP 100
-          EmpCode,
-          EmpName,
-          Punch,
-          PunchDatetime,
-          Latitude,
-          Longitude,
-          Address,
-          Device
-        FROM Attendance
-        WHERE EmpCode = @empCode
-        ORDER BY PunchDatetime DESC
-      `);
-    return result.recordset;
+    const result = await query(
+      `SELECT "EmpCode", "EmpName", "Punch", "PunchDatetime",
+              "Latitude", "Longitude", "Address", "Device"
+       FROM "Attendance"
+       WHERE "EmpCode" = $1
+       ORDER BY "PunchDatetime" DESC
+       LIMIT 100`,
+      [empCode.toString()]
+    );
+    return result.rows;
   },
 
   // Create attendance record
   create: async (data) => {
     const { empCode, status, empName, latitude, longitude, address } = data;
-    
+
     console.log(`Inserting Attendance: EmpCode=${empCode}, Punch=${status}`);
 
-    // Detailed insert with all required fields
-    await new sql.Request()
-      .input('empCode', sql.VarChar, empCode.toString())
-      .input('empName', sql.VarChar, empName)
-      .input('status', sql.VarChar, status)
-      .input('latitude', sql.Numeric, latitude)
-      .input('longitude', sql.Numeric, longitude)
-      .input('address', sql.VarChar, address)
-      .query(`
-        INSERT INTO Attendance (
-          PayCode,
-          EmpCode, 
-          EmpName, 
-          AtDate, 
-          PunchTime, 
-          PunchDatetime, 
-          Device, 
-          Punch, 
-          Manual, 
-          Status, 
-          Latitude, 
-          Longitude,
-          Address
-        ) 
-        VALUES (
-          @empCode, 
-          @empCode, 
-          @empName, 
-          CONVERT(VARCHAR, GETDATE(), 23), 
-          CONVERT(VARCHAR, GETDATE(), 108), 
-          GETDATE(), 
-          'ReactNative', 
-          @status, 
-          'N', 
-          1, 
-          @latitude, 
-          @longitude,
-          @address
-        )
-      `);
+    await query(
+      `INSERT INTO "Attendance" (
+        "PayCode", "EmpCode", "EmpName", "AtDate", "PunchTime",
+        "PunchDatetime", "Device", "Punch", "Manual", "Status",
+        "Latitude", "Longitude", "Address"
+      ) VALUES (
+        $1, $1, $2,
+        CURRENT_DATE::text,
+        TO_CHAR(NOW(), 'HH24:MI:SS'),
+        NOW(),
+        'ReactNative', $3, 'N', 1, $4, $5, $6
+      )`,
+      [empCode.toString(), empName, status, latitude, longitude, address]
+    );
   },
-  
+
   // Check if a specific punch exists for today
   checkExisting: async (empCode, status) => {
-    const result = await new sql.Request()
-      .input('empCode', sql.VarChar, empCode.toString())
-      .input('status', sql.VarChar, status)
-      .query(`
-        SELECT * FROM Attendance 
-        WHERE EmpCode = @empCode 
-        AND Punch = @status 
-        AND AtDate = CONVERT(VARCHAR, GETDATE(), 23)
-      `);
-    return result.recordset.length > 0;
+    const result = await query(
+      `SELECT 1 FROM "Attendance"
+       WHERE "EmpCode" = $1
+         AND "Punch" = $2
+         AND "AtDate" = CURRENT_DATE::text`,
+      [empCode.toString(), status]
+    );
+    return result.rows.length > 0;
   },
 
   // Get the last punch for today
   getLastPunchToday: async (empCode) => {
-    const result = await new sql.Request()
-      .input('empCode', sql.VarChar, empCode.toString())
-      .query(`
-        SELECT TOP 1 Punch, PunchDatetime, Address
-        FROM Attendance 
-        WHERE EmpCode = @empCode 
-        AND AtDate = CONVERT(VARCHAR, GETDATE(), 23)
-        ORDER BY PunchDatetime DESC
-      `);
-    return result.recordset[0];
+    const result = await query(
+      `SELECT "Punch", "PunchDatetime", "Address"
+       FROM "Attendance"
+       WHERE "EmpCode" = $1
+         AND "AtDate" = CURRENT_DATE::text
+       ORDER BY "PunchDatetime" DESC
+       LIMIT 1`,
+      [empCode.toString()]
+    );
+    return result.rows[0];
   },
 
   // Fetch all authorized attendance locations
   getLocations: async () => {
     try {
-      const result = await new sql.Request().query(`
-        SELECT 
-          LocationID as location_id, 
-          LocationName as location_name, 
-          Latitude as latitude, 
-          Longitude as longitude, 
-          Address as address,
-          AllowedRadius as allowed_radius,
-          LocationType as location_type
-        FROM AttendanceLocations
-        WHERE IsActive = 1
-      `);
-      return result.recordset;
+      const result = await query(
+        `SELECT
+          "LocationID"   AS location_id,
+          "LocationName" AS location_name,
+          "Latitude"     AS latitude,
+          "Longitude"    AS longitude,
+          "Address"      AS address,
+          "AllowedRadius" AS allowed_radius,
+          "LocationType"  AS location_type
+         FROM "AttendanceLocations"
+         WHERE "IsActive" = true`
+      );
+      return result.rows;
     } catch (error) {
       console.error("Error fetching locations:", error);
       throw new Error(
@@ -135,22 +100,21 @@ const Attendance = {
     const parsedId = parseInt(locationId, 10);
     if (!Number.isFinite(parsedId)) return null;
 
-    const result = await new sql.Request()
-      .input('locationId', sql.Int, parsedId)
-      .query(`
-        SELECT 
-          LocationID as location_id, 
-          LocationName as location_name, 
-          Latitude as latitude, 
-          Longitude as longitude, 
-          Address as address,
-          AllowedRadius as allowed_radius,
-          LocationType as location_type
-        FROM AttendanceLocations
-        WHERE LocationID = @locationId AND IsActive = 1
-      `);
-    return result.recordset[0];
-  }
+    const result = await query(
+      `SELECT
+        "LocationID"    AS location_id,
+        "LocationName"  AS location_name,
+        "Latitude"      AS latitude,
+        "Longitude"     AS longitude,
+        "Address"       AS address,
+        "AllowedRadius" AS allowed_radius,
+        "LocationType"  AS location_type
+       FROM "AttendanceLocations"
+       WHERE "LocationID" = $1 AND "IsActive" = true`,
+      [parsedId]
+    );
+    return result.rows[0];
+  },
 };
 
 module.exports = Attendance;
