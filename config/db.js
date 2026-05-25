@@ -31,6 +31,23 @@ const connectionString = process.env.DATABASE_URL;
 const isCloudHost = () =>
   !!(process.env.RENDER || process.env.RAILWAY_ENVIRONMENT || process.env.VERCEL);
 
+/** Direct db.*.supabase.co is IPv6-only; Render needs pooler (IPv4). */
+const isDirectSupabaseUrl = (url) =>
+  typeof url === "string" &&
+  /@db\.[a-z0-9]+\.supabase\.co/i.test(url);
+
+if (
+  isCloudHost() &&
+  !useMysql &&
+  connectionString &&
+  isDirectSupabaseUrl(connectionString)
+) {
+  console.warn(
+    "[db] DATABASE_URL uses direct Supabase host (IPv6). " +
+      "On Render, use Session pooler URI from Supabase → Connect → Session mode."
+  );
+}
+
 const validateDatabaseConfig = () => {
   if (useMysql) {
     const host = process.env.MYSQL_HOST || "127.0.0.1";

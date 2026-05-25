@@ -1,18 +1,28 @@
 /**
  * Build a non-empty error message for API responses (Postgres, MySQL, network).
  */
-const cloudDbHint = () =>
-  "Database unreachable from cloud (Render/Railway/Vercel). " +
-  "Set DATABASE_URL to your Supabase URL (not localhost). " +
-  "Use DB_DRIVER=postgres and remove MYSQL_HOST=127.0.0.1 on Render.";
+const cloudDbHint = (err) => {
+  if (err?.code === "ENETUNREACH" || String(err?.address || "").includes(":")) {
+    return (
+      "Supabase direct URL uses IPv6 — Render cannot reach it. " +
+      "In Supabase Dashboard → Connect → Session pooler (port 5432), " +
+      "copy that URI into Render DATABASE_URL (host: aws-0-REGION.pooler.supabase.com)."
+    );
+  }
+  return (
+    "Database unreachable from cloud (Render/Railway/Vercel). " +
+    "Set DATABASE_URL to Supabase Session pooler URI (not db.xxx.supabase.co direct). " +
+    "Use DB_DRIVER=postgres and remove MYSQL_HOST=127.0.0.1 on Render."
+  );
+};
 
 const formatApiError = (err, fallback = "Request failed") => {
   if (!err) return fallback;
 
   if (typeof err === "string" && err.trim()) return err.trim();
 
-  if (err.code === "ECONNREFUSED") {
-    return cloudDbHint();
+  if (err.code === "ECONNREFUSED" || err.code === "ENETUNREACH") {
+    return cloudDbHint(err);
   }
 
   const parts = [
