@@ -89,14 +89,25 @@ if (useMysql) {
   });
 } else {
   if (!connectionString) {
-    console.warn(
-      "DATABASE_URL is not set. Copy .env.example to .env (Postgres or DB_DRIVER=mysql)."
-    );
+    const msg =
+      "DATABASE_URL is not set. On Render: Environment → DATABASE_URL (Supabase URI).";
+    if (isCloudHost()) {
+      console.error(msg);
+      process.exit(1);
+    }
+    console.warn(msg);
   }
   pgPool = new Pool({
     connectionString,
     ssl: isLocalDatabase() ? false : { rejectUnauthorized: false },
   });
+}
+
+if (useMysql && isCloudHost()) {
+  console.error(
+    "DB_DRIVER=mysql cannot run on Render. Set DB_DRIVER=postgres and DATABASE_URL (Supabase)."
+  );
+  process.exit(1);
 }
 
 const RETURNING_RE = /\s+RETURNING\s+(.+)$/i;
@@ -170,6 +181,21 @@ const connectDB = async () => {
     return true;
   } catch (err) {
     console.error("Database connection failed:", err.message);
+    if (!connectionString) {
+      console.error("DATABASE_URL is not set (Render → Environment → add Supabase URI).");
+    } else if (!useMysql) {
+      try {
+        const host = new URL(
+          connectionString.replace(/^postgresql:\/\//i, "http://")
+        ).hostname;
+        console.error(`DATABASE_URL host: ${host}`);
+      } catch {
+        console.error("DATABASE_URL format is invalid.");
+      }
+    }
+    if (isCloudHost()) {
+      process.exit(1);
+    }
     if (process.env.NODE_ENV !== "production") {
       throw err;
     }
@@ -188,5 +214,5 @@ module.exports = {
   tbl,
   isLocalDatabase,
   isMysql: () => useMysql,
-  dbDriver: driver,
+  dbDriver: () => driver,
 };

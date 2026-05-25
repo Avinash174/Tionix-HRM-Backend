@@ -7,7 +7,7 @@ const https = require("https");
 const cors = require("cors");
 require("dotenv").config();
 
-const { connectDB } = require("./config/db");
+const { connectDB, query, dbDriver } = require("./config/db");
 const { errorResponse } = require("./utils/apiError");
 
 // Import Routes
@@ -46,7 +46,40 @@ app.get("/", (req, res) => {
     message: "HRM Backend Running",
     environment: process.env.NODE_ENV || "development",
     vercel: !!process.env.VERCEL,
+    render: !!process.env.RENDER,
   });
+});
+
+/** Safe DB diagnostics for Render (no passwords). */
+app.get("/health/db", async (req, res) => {
+  const info = {
+    dbDriver: dbDriver(),
+    databaseUrlSet: !!process.env.DATABASE_URL,
+    databaseHost: null,
+    mysqlHost: process.env.MYSQL_HOST || null,
+    connected: false,
+  };
+
+  if (process.env.DATABASE_URL) {
+    try {
+      info.databaseHost = new URL(
+        process.env.DATABASE_URL.replace(/^postgresql:\/\//i, "http://")
+      ).hostname;
+    } catch {
+      info.databaseHost = "invalid-url";
+    }
+  }
+
+  try {
+    await query("SELECT 1 AS ok");
+    info.connected = true;
+  } catch (err) {
+    info.connected = false;
+    info.errorCode = err.code;
+    info.errorMessage = err.message;
+  }
+
+  res.status(info.connected ? 200 : 503).json(info);
 });
 
 // Routes Implementation (MVC Pattern)
