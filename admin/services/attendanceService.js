@@ -1,103 +1,80 @@
-const { sql } = require("../../config/db");
+const { query } = require("../../config/db");
 const { parsePagination, buildPaginationMeta } = require("../utils/pagination");
 const { toDateString, parseDate } = require("../utils/dateUtils");
 
-const listAttendance = async (query = {}) => {
-  const { page, limit, offset } = parsePagination(query);
-  const empCode = query.empCode ? query.empCode.toString() : null;
-  const startDate = query.startDate ? toDateString(parseDate(query.startDate)) : null;
-  const endDate = query.endDate ? toDateString(parseDate(query.endDate)) : null;
-  const punch = query.punch || null;
+const listAttendance = async (q = {}) => {
+  const { page, limit, offset } = parsePagination(q);
+  const empCode = q.empCode ? q.empCode.toString() : null;
+  const startDate = q.startDate ? toDateString(parseDate(q.startDate)) : null;
+  const endDate = q.endDate ? toDateString(parseDate(q.endDate)) : null;
+  const punch = q.punch || null;
 
-  const result = await new sql.Request()
-    .input("empCode", sql.VarChar, empCode)
-    .input("startDate", sql.VarChar, startDate)
-    .input("endDate", sql.VarChar, endDate)
-    .input("punch", sql.VarChar, punch)
-    .input("offset", sql.Int, offset)
-    .input("limit", sql.Int, limit)
-    .query(`
-      SELECT EmpCode, EmpName, Punch, PunchDatetime, Latitude, Longitude, Address, Device, AtDate
-      FROM Attendance
-      WHERE (@empCode IS NULL OR EmpCode = @empCode)
-        AND (@punch IS NULL OR Punch = @punch)
-        AND (@startDate IS NULL OR AtDate >= @startDate)
-        AND (@endDate IS NULL OR AtDate <= @endDate)
-      ORDER BY PunchDatetime DESC
-      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
-    `);
+  const result = await query(
+    `SELECT "EmpCode", "EmpName", "Punch", "PunchDatetime", "Latitude", "Longitude", "Address", "Device", "AtDate"
+     FROM "Attendance"
+     WHERE ($1::text IS NULL OR "EmpCode" = $1)
+       AND ($2::text IS NULL OR "Punch" = $2)
+       AND ($3::text IS NULL OR "AtDate" >= $3)
+       AND ($4::text IS NULL OR "AtDate" <= $4)
+     ORDER BY "PunchDatetime" DESC
+     LIMIT $5 OFFSET $6`,
+    [empCode, punch, startDate, endDate, limit, offset]
+  );
 
-  const totalResult = await new sql.Request()
-    .input("empCode", sql.VarChar, empCode)
-    .input("startDate", sql.VarChar, startDate)
-    .input("endDate", sql.VarChar, endDate)
-    .input("punch", sql.VarChar, punch)
-    .query(`
-      SELECT COUNT(*) AS total
-      FROM Attendance
-      WHERE (@empCode IS NULL OR EmpCode = @empCode)
-        AND (@punch IS NULL OR Punch = @punch)
-        AND (@startDate IS NULL OR AtDate >= @startDate)
-        AND (@endDate IS NULL OR AtDate <= @endDate)
-    `);
+  const totalResult = await query(
+    `SELECT COUNT(*) AS total FROM "Attendance"
+     WHERE ($1::text IS NULL OR "EmpCode" = $1)
+       AND ($2::text IS NULL OR "Punch" = $2)
+       AND ($3::text IS NULL OR "AtDate" >= $3)
+       AND ($4::text IS NULL OR "AtDate" <= $4)`,
+    [empCode, punch, startDate, endDate]
+  );
 
-  const total = Number(totalResult.recordset[0]?.total || 0);
+  const total = Number(totalResult.rows[0]?.total || 0);
 
   return {
-    data: result.recordset,
+    data: result.rows,
     meta: buildPaginationMeta(page, limit, total),
   };
 };
 
-const getHistory = async (query = {}) => {
-  const empCode = query.empCode ? query.empCode.toString() : null;
-  const startDate = query.startDate ? toDateString(parseDate(query.startDate)) : null;
-  const endDate = query.endDate ? toDateString(parseDate(query.endDate)) : null;
+const getHistory = async (q = {}) => {
+  const empCode = q.empCode ? q.empCode.toString() : null;
+  const startDate = q.startDate ? toDateString(parseDate(q.startDate)) : null;
+  const endDate = q.endDate ? toDateString(parseDate(q.endDate)) : null;
 
-  const result = await new sql.Request()
-    .input("empCode", sql.VarChar, empCode)
-    .input("startDate", sql.VarChar, startDate)
-    .input("endDate", sql.VarChar, endDate)
-    .query(`
-      SELECT EmpCode, AtDate,
-        MIN(CASE WHEN Punch = 'Check IN' THEN PunchDatetime END) AS firstCheckIn,
-        MAX(CASE WHEN Punch = 'Check OUT' THEN PunchDatetime END) AS lastCheckOut,
-        COUNT(*) AS totalPunches
-      FROM Attendance
-      WHERE (@empCode IS NULL OR EmpCode = @empCode)
-        AND (@startDate IS NULL OR AtDate >= @startDate)
-        AND (@endDate IS NULL OR AtDate <= @endDate)
-      GROUP BY EmpCode, AtDate
-      ORDER BY AtDate DESC
-    `);
+  const result = await query(
+    `SELECT "EmpCode", "AtDate",
+       MIN(CASE WHEN "Punch" = 'Check IN' THEN "PunchDatetime" END) AS "firstCheckIn",
+       MAX(CASE WHEN "Punch" = 'Check OUT' THEN "PunchDatetime" END) AS "lastCheckOut",
+       COUNT(*) AS "totalPunches"
+     FROM "Attendance"
+     WHERE ($1::text IS NULL OR "EmpCode" = $1)
+       AND ($2::text IS NULL OR "AtDate" >= $2)
+       AND ($3::text IS NULL OR "AtDate" <= $3)
+     GROUP BY "EmpCode", "AtDate"
+     ORDER BY "AtDate" DESC`,
+    [empCode, startDate, endDate]
+  );
 
-  return result.recordset;
+  return result.rows;
 };
 
-const getReports = async (query = {}) => {
-  const startDate = query.startDate ? toDateString(parseDate(query.startDate)) : toDateString();
-  const endDate = query.endDate ? toDateString(parseDate(query.endDate)) : startDate;
+const getReports = async (q = {}) => {
+  const startDate = q.startDate ? toDateString(parseDate(q.startDate)) : toDateString();
+  const endDate = q.endDate ? toDateString(parseDate(q.endDate)) : startDate;
 
-  const result = await new sql.Request()
-    .input("startDate", sql.VarChar, startDate)
-    .input("endDate", sql.VarChar, endDate)
-    .query(`
-      SELECT AtDate, COUNT(DISTINCT EmpCode) AS presentCount
-      FROM Attendance
-      WHERE AtDate BETWEEN @startDate AND @endDate
-        AND Punch = 'Check IN'
-      GROUP BY AtDate
-      ORDER BY AtDate
-    `);
+  const result = await query(
+    `SELECT "AtDate", COUNT(DISTINCT "EmpCode") AS "presentCount"
+     FROM "Attendance"
+     WHERE "AtDate" BETWEEN $1 AND $2
+       AND "Punch" = 'Check IN'
+     GROUP BY "AtDate"
+     ORDER BY "AtDate"`,
+    [startDate, endDate]
+  );
 
-  return {
-    range: { startDate, endDate },
-    daily: result.recordset,
-  };
+  return { range: { startDate, endDate }, daily: result.rows };
 };
 
-module.exports = {
-  listAttendance,
-  getHistory,
-  getReports,
-};
+module.exports = { listAttendance, getHistory, getReports };

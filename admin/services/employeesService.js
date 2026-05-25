@@ -1,75 +1,66 @@
-const { sql } = require("../../config/db");
+const { query } = require("../../config/db");
 const { parsePagination, buildPaginationMeta } = require("../utils/pagination");
 const { toDateString, getMonthRange } = require("../utils/dateUtils");
 const salaryStructureModel = require("../../models/salaryStructureModel");
 
-const listEmployees = async (query = {}) => {
-  const { page, limit, offset } = parsePagination(query);
-  const search = query.search ? `%${query.search}%` : null;
-  const locationId = query.locationId ? parseInt(query.locationId, 10) : null;
+const listEmployees = async (q = {}) => {
+  const { page, limit, offset } = parsePagination(q);
+  const search = q.search ? `%${q.search}%` : null;
+  const locationId = q.locationId ? parseInt(q.locationId, 10) : null;
 
-  const result = await new sql.Request()
-    .input("search", sql.VarChar, search)
-    .input("locationId", sql.Int, locationId)
-    .input("offset", sql.Int, offset)
-    .input("limit", sql.Int, limit)
-    .query(`
-      SELECT u.pkUserId, u.UserName, u.fkEmpId, u.Email, u.Phone, u.AttendanceMode,
-             u.GeofencePoint, u.fkLocationId, l.LocationName AS officeName
-      FROM dbo.AppUser u
-      LEFT JOIN dbo.AttendanceLocations l ON u.fkLocationId = l.LocationID
-      WHERE u.fkEmpId IS NOT NULL
-        AND (@search IS NULL OR u.UserName LIKE @search OR CAST(u.fkEmpId AS VARCHAR(20)) LIKE @search)
-        AND (@locationId IS NULL OR u.fkLocationId = @locationId)
-      ORDER BY u.UserName
-      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
-    `);
+  const result = await query(
+    `SELECT u."pkUserId", u."UserName", u."fkEmpId", u."Email", u."Phone",
+            u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
+            l."LocationName" AS "officeName"
+     FROM "AppUser" u
+     LEFT JOIN "AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+     WHERE u."fkEmpId" IS NOT NULL
+       AND ($1::text IS NULL OR u."UserName" ILIKE $1 OR u."fkEmpId"::text ILIKE $1)
+       AND ($2::int IS NULL OR u."fkLocationId" = $2)
+     ORDER BY u."UserName"
+     LIMIT $3 OFFSET $4`,
+    [search, locationId, limit, offset]
+  );
 
-  const totalResult = await new sql.Request()
-    .input("search", sql.VarChar, search)
-    .input("locationId", sql.Int, locationId)
-    .query(`
-      SELECT COUNT(*) AS total
-      FROM dbo.AppUser u
-      WHERE u.fkEmpId IS NOT NULL
-        AND (@search IS NULL OR u.UserName LIKE @search OR CAST(u.fkEmpId AS VARCHAR(20)) LIKE @search)
-        AND (@locationId IS NULL OR u.fkLocationId = @locationId)
-    `);
+  const totalResult = await query(
+    `SELECT COUNT(*) AS total FROM "AppUser" u
+     WHERE u."fkEmpId" IS NOT NULL
+       AND ($1::text IS NULL OR u."UserName" ILIKE $1 OR u."fkEmpId"::text ILIKE $1)
+       AND ($2::int IS NULL OR u."fkLocationId" = $2)`,
+    [search, locationId]
+  );
 
-  const total = Number(totalResult.recordset[0]?.total || 0);
-
-  return {
-    data: result.recordset,
-    meta: buildPaginationMeta(page, limit, total),
-  };
+  const total = Number(totalResult.rows[0]?.total || 0);
+  return { data: result.rows, meta: buildPaginationMeta(page, limit, total) };
 };
 
 const resolveEmployee = async (id) => {
   if (!id) return null;
   const numericId = Number(id);
+
   if (Number.isFinite(numericId)) {
-    const res = await new sql.Request()
-      .input("empId", sql.Numeric, numericId)
-      .query(`
-        SELECT u.pkUserId, u.UserName, u.fkEmpId, u.Email, u.Phone, u.AttendanceMode,
-               u.GeofencePoint, u.fkLocationId, l.LocationName AS officeName
-        FROM dbo.AppUser u
-        LEFT JOIN dbo.AttendanceLocations l ON u.fkLocationId = l.LocationID
-        WHERE u.fkEmpId = @empId
-      `);
-    return res.recordset[0];
+    const res = await query(
+      `SELECT u."pkUserId", u."UserName", u."fkEmpId", u."Email", u."Phone",
+              u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
+              l."LocationName" AS "officeName"
+       FROM "AppUser" u
+       LEFT JOIN "AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+       WHERE u."fkEmpId" = $1`,
+      [numericId]
+    );
+    return res.rows[0];
   }
 
-  const res = await new sql.Request()
-    .input("pkUserId", sql.VarChar, id)
-    .query(`
-      SELECT u.pkUserId, u.UserName, u.fkEmpId, u.Email, u.Phone, u.AttendanceMode,
-             u.GeofencePoint, u.fkLocationId, l.LocationName AS officeName
-      FROM dbo.AppUser u
-      LEFT JOIN dbo.AttendanceLocations l ON u.fkLocationId = l.LocationID
-      WHERE u.pkUserId = @pkUserId
-    `);
-  return res.recordset[0];
+  const res = await query(
+    `SELECT u."pkUserId", u."UserName", u."fkEmpId", u."Email", u."Phone",
+            u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
+            l."LocationName" AS "officeName"
+     FROM "AppUser" u
+     LEFT JOIN "AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+     WHERE u."pkUserId" = $1`,
+    [id]
+  );
+  return res.rows[0];
 };
 
 const updateEmployee = async (id, patch = {}) => {
@@ -92,39 +83,25 @@ const updateEmployee = async (id, patch = {}) => {
         error.statusCode = 400;
         throw error;
       }
-
-      const officeResult = await new sql.Request()
-        .input("locationId", sql.Int, parsedLocationId)
-        .query(`
-          SELECT LocationID
-          FROM dbo.AttendanceLocations
-          WHERE LocationID = @locationId AND IsActive = 1
-        `);
-
-      if (!officeResult.recordset[0]) {
+      const officeResult = await query(
+        `SELECT "LocationID" FROM "AttendanceLocations" WHERE "LocationID" = $1 AND "IsActive" = true`,
+        [parsedLocationId]
+      );
+      if (!officeResult.rows[0]) {
         const error = new Error("Office not found");
         error.statusCode = 404;
         throw error;
       }
-
       nextLocationId = parsedLocationId;
     }
   }
 
-  await new sql.Request()
-    .input("pkUserId", sql.VarChar, employee.pkUserId)
-    .input("userName", sql.VarChar, nextUserName)
-    .input("email", sql.VarChar, nextEmail)
-    .input("phone", sql.VarChar, nextPhone)
-    .input("locationId", sql.Int, nextLocationId)
-    .query(`
-      UPDATE dbo.AppUser
-      SET UserName = @userName,
-          Email = @email,
-          Phone = @phone,
-          fkLocationId = @locationId
-      WHERE pkUserId = @pkUserId
-    `);
+  await query(
+    `UPDATE "AppUser"
+     SET "UserName" = $1, "Email" = $2, "Phone" = $3, "fkLocationId" = $4
+     WHERE "pkUserId" = $5`,
+    [nextUserName, nextEmail, nextPhone, nextLocationId, employee.pkUserId]
+  );
 
   return resolveEmployee(employee.pkUserId);
 };
@@ -132,44 +109,36 @@ const updateEmployee = async (id, patch = {}) => {
 const deleteEmployee = async (id) => {
   const employee = await resolveEmployee(id);
   if (!employee) return null;
-
-  await new sql.Request()
-    .input("pkUserId", sql.VarChar, employee.pkUserId)
-    .query("DELETE FROM dbo.AppUser WHERE pkUserId = @pkUserId");
-
+  await query(`DELETE FROM "AppUser" WHERE "pkUserId" = $1`, [employee.pkUserId]);
   return employee;
 };
 
 const getAttendanceSummary = async (empCode) => {
   if (!empCode) return null;
   const { start, end } = getMonthRange();
-  const result = await new sql.Request()
-    .input("empCode", sql.VarChar, empCode.toString())
-    .input("startDate", sql.VarChar, toDateString(start))
-    .input("endDate", sql.VarChar, toDateString(end))
-    .query(`
-      SELECT
-        COUNT(CASE WHEN Punch = 'Check IN' THEN 1 END) AS checkIns,
-        COUNT(CASE WHEN Punch = 'Check OUT' THEN 1 END) AS checkOuts,
-        MAX(PunchDatetime) AS lastPunchAt
-      FROM Attendance
-      WHERE EmpCode = @empCode
-        AND AtDate BETWEEN @startDate AND @endDate
-    `);
-  return result.recordset[0];
+  const result = await query(
+    `SELECT
+       COUNT(CASE WHEN "Punch" = 'Check IN' THEN 1 END) AS "checkIns",
+       COUNT(CASE WHEN "Punch" = 'Check OUT' THEN 1 END) AS "checkOuts",
+       MAX("PunchDatetime") AS "lastPunchAt"
+     FROM "Attendance"
+     WHERE "EmpCode" = $1 AND "AtDate" BETWEEN $2 AND $3`,
+    [empCode.toString(), toDateString(start), toDateString(end)]
+  );
+  return result.rows[0];
 };
 
 const getActivityLogs = async (empCode) => {
   if (!empCode) return [];
-  const result = await new sql.Request()
-    .input("empCode", sql.VarChar, empCode.toString())
-    .query(`
-      SELECT TOP 20 Punch, PunchDatetime, Address, Device
-      FROM Attendance
-      WHERE EmpCode = @empCode
-      ORDER BY PunchDatetime DESC
-    `);
-  return result.recordset;
+  const result = await query(
+    `SELECT "Punch", "PunchDatetime", "Address", "Device"
+     FROM "Attendance"
+     WHERE "EmpCode" = $1
+     ORDER BY "PunchDatetime" DESC
+     LIMIT 20`,
+    [empCode.toString()]
+  );
+  return result.rows;
 };
 
 const getLatestSalaryStructure = async (id) => {
@@ -184,7 +153,6 @@ const getLatestSalaryStructure = async (id) => {
   }
 
   const snapshot = await salaryStructureModel.getLatestSalarySnapshot(fkEmpId);
-
   return {
     employee: {
       pkUserId: employee.pkUserId,

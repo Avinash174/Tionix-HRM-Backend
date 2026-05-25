@@ -1,47 +1,39 @@
-const { sql } = require("../../config/db");
+const { query } = require("../../config/db");
 const { toDateString, parseDate } = require("../utils/dateUtils");
 const officesService = require("./officesService");
 
-const getAttendanceReport = async (query = {}) => {
-  const startDate = query.startDate ? toDateString(parseDate(query.startDate)) : toDateString();
-  const endDate = query.endDate ? toDateString(parseDate(query.endDate)) : startDate;
+const getAttendanceReport = async (q = {}) => {
+  const startDate = q.startDate ? toDateString(parseDate(q.startDate)) : toDateString();
+  const endDate = q.endDate ? toDateString(parseDate(q.endDate)) : startDate;
 
-  const result = await new sql.Request()
-    .input("startDate", sql.VarChar, startDate)
-    .input("endDate", sql.VarChar, endDate)
-    .query(`
-      SELECT AtDate, COUNT(DISTINCT EmpCode) AS presentCount
-      FROM Attendance
-      WHERE AtDate BETWEEN @startDate AND @endDate
-        AND Punch = 'Check IN'
-      GROUP BY AtDate
-      ORDER BY AtDate
-    `);
+  const result = await query(
+    `SELECT "AtDate", COUNT(DISTINCT "EmpCode") AS "presentCount"
+     FROM "Attendance"
+     WHERE "AtDate" BETWEEN $1 AND $2 AND "Punch" = 'Check IN'
+     GROUP BY "AtDate"
+     ORDER BY "AtDate"`,
+    [startDate, endDate]
+  );
 
-  return {
-    range: { startDate, endDate },
-    daily: result.recordset,
-  };
+  return { range: { startDate, endDate }, daily: result.rows };
 };
 
-const getProductivityReport = async (query = {}) => {
-  const startDate = query.startDate ? toDateString(parseDate(query.startDate)) : toDateString();
-  const endDate = query.endDate ? toDateString(parseDate(query.endDate)) : startDate;
+const getProductivityReport = async (q = {}) => {
+  const startDate = q.startDate ? toDateString(parseDate(q.startDate)) : toDateString();
+  const endDate = q.endDate ? toDateString(parseDate(q.endDate)) : startDate;
 
-  const result = await new sql.Request()
-    .input("startDate", sql.VarChar, startDate)
-    .input("endDate", sql.VarChar, endDate)
-    .query(`
-      SELECT EmpCode, AtDate,
-             MIN(PunchDatetime) AS firstPunch,
-             MAX(PunchDatetime) AS lastPunch
-      FROM Attendance
-      WHERE AtDate BETWEEN @startDate AND @endDate
-      GROUP BY EmpCode, AtDate
-      ORDER BY AtDate DESC
-    `);
+  const result = await query(
+    `SELECT "EmpCode", "AtDate",
+            MIN("PunchDatetime") AS "firstPunch",
+            MAX("PunchDatetime") AS "lastPunch"
+     FROM "Attendance"
+     WHERE "AtDate" BETWEEN $1 AND $2
+     GROUP BY "EmpCode", "AtDate"
+     ORDER BY "AtDate" DESC`,
+    [startDate, endDate]
+  );
 
-  const productivity = result.recordset.map((row) => {
+  const productivity = result.rows.map((row) => {
     const start = row.firstPunch ? new Date(row.firstPunch) : null;
     const end = row.lastPunch ? new Date(row.lastPunch) : null;
     const hours = start && end ? (end - start) / (1000 * 60 * 60) : 0;
@@ -54,10 +46,7 @@ const getProductivityReport = async (query = {}) => {
     };
   });
 
-  return {
-    range: { startDate, endDate },
-    productivity,
-  };
+  return { range: { startDate, endDate }, productivity };
 };
 
 const getOfficeReport = async () => {
@@ -65,8 +54,4 @@ const getOfficeReport = async () => {
   return { offices };
 };
 
-module.exports = {
-  getAttendanceReport,
-  getProductivityReport,
-  getOfficeReport,
-};
+module.exports = { getAttendanceReport, getProductivityReport, getOfficeReport };

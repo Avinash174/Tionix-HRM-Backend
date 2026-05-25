@@ -1,22 +1,19 @@
-const { sql } = require("../../config/db");
+const { query } = require("../../config/db");
 const { toDateString } = require("../utils/dateUtils");
-
 const { getFixedOfficeListForAdmin, getDefaultRadiusMeters } = require("../../config/officeGeofences");
 
 const getDefaultOfficeRadiusMeters = () => getDefaultRadiusMeters();
-
 const fetchOffices = async () => getFixedOfficeListForAdmin();
 
 const buildOfficeAnalytics = async () => {
   const date = toDateString();
-  const totals = await new sql.Request()
-    .input("date", sql.VarChar, date)
-    .query(`
-      SELECT
-        (SELECT COUNT(*) FROM dbo.AppUser WHERE fkEmpId IS NOT NULL) AS totalEmployees,
-        (SELECT COUNT(DISTINCT EmpCode) FROM Attendance WHERE AtDate = @date AND Punch = 'Check IN') AS presentEmployees
-    `);
-  const stats = totals.recordset[0] || {};
+  const totals = await query(
+    `SELECT
+       (SELECT COUNT(*) FROM "AppUser" WHERE "fkEmpId" IS NOT NULL) AS "totalEmployees",
+       (SELECT COUNT(DISTINCT "EmpCode") FROM "Attendance" WHERE "AtDate" = $1 AND "Punch" = 'Check IN') AS "presentEmployees"`,
+    [date]
+  );
+  const stats = totals.rows[0] || {};
   const totalEmployees = Number(stats.totalEmployees || 0);
   const presentEmployees = Number(stats.presentEmployees || 0);
   const attendancePercent = totalEmployees
@@ -45,56 +42,50 @@ const createOffice = async ({
   locationType = "OFFICE",
   address = null,
 }) => {
-  const result = await new sql.Request()
-    .input('officeName', sql.NVarChar, officeName)
-    .input('latitude', sql.Decimal(10, 7), latitude)
-    .input('longitude', sql.Decimal(10, 7), longitude)
-    .input('allowedRadius', sql.Decimal(10, 2), allowedRadius)
-    .input('locationType', sql.NVarChar, locationType)
-    .input('address', sql.NVarChar, address)
-    .query(`
-      INSERT INTO dbo.AttendanceLocations (LocationName, Latitude, Longitude, AllowedRadius, LocationType, Address)
-      OUTPUT INSERTED.LocationID as officeId, INSERTED.LocationName as officeName,
-             INSERTED.Latitude as latitude, INSERTED.Longitude as longitude,
-             INSERTED.AllowedRadius as allowedRadius, INSERTED.LocationType as officeType,
-             INSERTED.Address as address
-      VALUES (@officeName, @latitude, @longitude, @allowedRadius, @locationType, @address)
-    `);
-  return result.recordset[0];
+  const result = await query(
+    `INSERT INTO "AttendanceLocations" ("LocationName", "Latitude", "Longitude", "AllowedRadius", "LocationType", "Address")
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING "LocationID" AS "officeId", "LocationName" AS "officeName",
+               "Latitude" AS "latitude", "Longitude" AS "longitude",
+               "AllowedRadius" AS "allowedRadius", "LocationType" AS "officeType",
+               "Address" AS "address"`,
+    [officeName, latitude, longitude, allowedRadius, locationType, address]
+  );
+  return result.rows[0];
 };
 
 const updateOffice = async (officeId, { officeName, latitude, longitude, allowedRadius, locationType, address }) => {
-  const request = new sql.Request().input('officeId', sql.Int, officeId);
-
   const sets = [];
-  if (officeName != null) { request.input('officeName', sql.NVarChar, officeName); sets.push('LocationName = @officeName'); }
-  if (latitude != null) { request.input('latitude', sql.Decimal(10, 7), latitude); sets.push('Latitude = @latitude'); }
-  if (longitude != null) { request.input('longitude', sql.Decimal(10, 7), longitude); sets.push('Longitude = @longitude'); }
-  if (allowedRadius != null) { request.input('allowedRadius', sql.Decimal(10, 2), allowedRadius); sets.push('AllowedRadius = @allowedRadius'); }
-  if (locationType != null) { request.input('locationType', sql.NVarChar, locationType); sets.push('LocationType = @locationType'); }
-  if (address != null) { request.input('address', sql.NVarChar, address); sets.push('Address = @address'); }
+  const params = [officeId]; // $1 = officeId
+
+  if (officeName != null) { params.push(officeName); sets.push(`"LocationName" = $${params.length}`); }
+  if (latitude != null) { params.push(latitude); sets.push(`"Latitude" = $${params.length}`); }
+  if (longitude != null) { params.push(longitude); sets.push(`"Longitude" = $${params.length}`); }
+  if (allowedRadius != null) { params.push(allowedRadius); sets.push(`"AllowedRadius" = $${params.length}`); }
+  if (locationType != null) { params.push(locationType); sets.push(`"LocationType" = $${params.length}`); }
+  if (address != null) { params.push(address); sets.push(`"Address" = $${params.length}`); }
 
   if (sets.length === 0) return null;
 
-  const result = await request.query(`
-    UPDATE dbo.AttendanceLocations
-    SET ${sets.join(', ')}
-    OUTPUT INSERTED.LocationID as officeId, INSERTED.LocationName as officeName,
-           INSERTED.Latitude as latitude, INSERTED.Longitude as longitude,
-           INSERTED.AllowedRadius as allowedRadius, INSERTED.LocationType as officeType,
-           INSERTED.Address as address
-    WHERE LocationID = @officeId
-  `);
-  return result.recordset[0] || null;
+  const result = await query(
+    `UPDATE "AttendanceLocations"
+     SET ${sets.join(", ")}
+     WHERE "LocationID" = $1
+     RETURNING "LocationID" AS "officeId", "LocationName" AS "officeName",
+               "Latitude" AS "latitude", "Longitude" AS "longitude",
+               "AllowedRadius" AS "allowedRadius", "LocationType" AS "officeType",
+               "Address" AS "address"`,
+    params
+  );
+  return result.rows[0] || null;
 };
 
 const deleteOffice = async (officeId) => {
-  const result = await new sql.Request()
-    .input('officeId', sql.Int, officeId)
-    .query(`
-      UPDATE dbo.AttendanceLocations SET IsActive = 0 WHERE LocationID = @officeId
-    `);
-  return result.rowsAffected[0] > 0;
+  const result = await query(
+    `UPDATE "AttendanceLocations" SET "IsActive" = false WHERE "LocationID" = $1`,
+    [officeId]
+  );
+  return result.rowCount > 0;
 };
 
 module.exports = {
