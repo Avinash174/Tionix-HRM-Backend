@@ -1,7 +1,7 @@
 const { query } = require("../config/db");
+const { atDateInsert, punchTimeInsert, atDateToday } = require("../config/dialect");
 
 const Attendance = {
-  // Get recent 50 attendance records
   getRecentAttendance: async () => {
     const result = await query(
       `SELECT * FROM "dbo.Attendance" ORDER BY "PunchDatetime" DESC LIMIT 50`
@@ -9,7 +9,6 @@ const Attendance = {
     return result.rows;
   },
 
-  // Get attendance for a specific employee by EmpCode
   getByEmpCode: async (empCode) => {
     const result = await query(
       `SELECT "EmpCode", "EmpName", "Punch", "PunchDatetime",
@@ -23,7 +22,6 @@ const Attendance = {
     return result.rows;
   },
 
-  // Create attendance record
   create: async (data) => {
     const { empCode, status, empName, latitude, longitude, address } = data;
 
@@ -36,8 +34,8 @@ const Attendance = {
         "Latitude", "Longitude", "Address"
       ) VALUES (
         $1, $1, $2,
-        CURRENT_DATE::text,
-        TO_CHAR(NOW(), 'HH24:MI:SS'),
+        ${atDateInsert()},
+        ${punchTimeInsert()},
         NOW(),
         'ReactNative', $3, 'N', 1, $4, $5, $6
       )`,
@@ -45,25 +43,23 @@ const Attendance = {
     );
   },
 
-  // Check if a specific punch exists for today
   checkExisting: async (empCode, status) => {
     const result = await query(
       `SELECT 1 FROM "dbo.Attendance"
        WHERE "EmpCode" = $1
          AND "Punch" = $2
-         AND "AtDate" = CURRENT_DATE::text`,
+         AND ${atDateToday()}`,
       [empCode.toString(), status]
     );
     return result.rows.length > 0;
   },
 
-  // Get the last punch for today
   getLastPunchToday: async (empCode) => {
     const result = await query(
       `SELECT "Punch", "PunchDatetime", "Address"
        FROM "dbo.Attendance"
        WHERE "EmpCode" = $1
-         AND "AtDate" = CURRENT_DATE::text
+         AND ${atDateToday()}
        ORDER BY "PunchDatetime" DESC
        LIMIT 1`,
       [empCode.toString()]
@@ -71,7 +67,6 @@ const Attendance = {
     return result.rows[0];
   },
 
-  // Fetch all authorized attendance locations
   getLocations: async () => {
     try {
       const result = await query(
@@ -95,7 +90,6 @@ const Attendance = {
     }
   },
 
-  // Fetch a specific attendance location by ID
   getLocationById: async (locationId) => {
     const parsedId = parseInt(locationId, 10);
     if (!Number.isFinite(parsedId)) return null;

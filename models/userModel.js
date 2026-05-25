@@ -1,4 +1,5 @@
 const { query } = require("../config/db");
+const { sessionExpiresAt, adminSysDefinedOr } = require("../config/dialect");
 
 const User = {
   findByCredentials: async (username, password) => {
@@ -26,8 +27,7 @@ const User = {
          AND TRIM("Password") = $2
          AND (
            "fkEmpId" IS NOT NULL
-           OR COALESCE("SysDefined"::int, 0) = 1
-           OR (COALESCE(NULLIF(TRIM("fkECId"::text), '')::int, 0) = 1 AND "fkEmpId" IS NULL)
+           ${adminSysDefinedOr()}
          )
        LIMIT 1`,
       [trimmedUser, trimmedPass]
@@ -35,9 +35,10 @@ const User = {
     const user = result.rows[0];
     if (!user) return null;
 
+    const sysDefined = Number(user.SysDefined);
     const isAdmin =
       user.SysDefined === true ||
-      user.SysDefined === 1 ||
+      sysDefined === 1 ||
       (Number(user.fkECId) === 1 && user.fkEmpId == null);
 
     return { user, role: isAdmin ? "admin" : "user" };
@@ -54,7 +55,7 @@ const User = {
   createSession: async (userId, refreshToken) => {
     await query(
       `INSERT INTO "dbo.UserSessions" ("UserID", "RefreshToken", "ExpiresAt")
-       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+       VALUES ($1, $2, ${sessionExpiresAt()})`,
       [userId, refreshToken]
     );
   },

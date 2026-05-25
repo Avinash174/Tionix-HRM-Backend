@@ -5,6 +5,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const { connectDB } = require("./config/db");
+const { errorResponse } = require("./utils/apiError");
 
 // Import Routes
 const authRoutes = require("./routes/authRoutes");
@@ -61,14 +62,14 @@ app.use("/api/hrm/admin", adminRoutes);
 // Global error handler for serverless (prevents hard crashes)
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
-  res.status(500).json({
-    success: false,
-    message:
-      err.message ||
-      err.detail ||
-      (process.env.NODE_ENV === "production" ? "Something went wrong" : "Internal Server Error"),
-    code: err.code,
-  });
+  res.status(err.statusCode || 500).json(
+    errorResponse(
+      err,
+      process.env.NODE_ENV === "production"
+        ? "Something went wrong"
+        : "Internal Server Error"
+    )
+  );
 });
 
 const PORT = process.env.PORT || 5000;

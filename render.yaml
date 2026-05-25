@@ -1,0 +1,25 @@
+# Render Blueprint — Web Service (Node)
+# Dashboard: New + Blueprint, or link repo and set these manually.
+services:
+  - type: web
+    name: hrm-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_DRIVER
+        value: postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ATTENDANCE_RADIUS_METERS
+        value: "25"
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false

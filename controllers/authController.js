@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 const adminAuthService = require("../admin/services/authService");
+const { errorResponse } = require("../utils/apiError");
 
 const login = async (req, res) => {
   try {
@@ -76,19 +77,12 @@ const login = async (req, res) => {
       res.status(401).json({
         success: false,
         message: "Login Failed, Please try again",
+        error: "Login Failed, Please try again",
       });
     }
   } catch (err) {
-    const message =
-      err.message ||
-      err.detail ||
-      (err.code ? `Database error (${err.code})` : "Login failed");
     console.error("Login error:", err);
-    res.status(500).json({
-      success: false,
-      message,
-      code: err.code || undefined,
-    });
+    res.status(500).json(errorResponse(err, "Login failed — check database connection and table names"));
   }
 };
 

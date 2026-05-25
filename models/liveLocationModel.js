@@ -1,28 +1,12 @@
 const { query, pool } = require("../config/db");
+const { createLiveLocationTableSql, isMysql } = require("../config/dialect");
 
 let tableReady = false;
 
 const ensureLiveLocationTable = async () => {
   if (tableReady) return;
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS employee_live_locations (
-      id             BIGSERIAL PRIMARY KEY,
-      emp_code       VARCHAR(50)    NOT NULL,
-      emp_name       VARCHAR(100)   NULL,
-      latitude       DECIMAL(10,7)  NOT NULL,
-      longitude      DECIMAL(10,7)  NOT NULL,
-      accuracy_meters DECIMAL(10,2) NULL,
-      heading        DECIMAL(10,2)  NULL,
-      speed          DECIMAL(10,2)  NULL,
-      address        VARCHAR(500)   NULL,
-      device_info    VARCHAR(500)   NULL,
-      is_suspicious  BOOLEAN        DEFAULT false,
-      gps_risk_score INT            NULL,
-      gps_flags      VARCHAR(500)   NULL,
-      recorded_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-    )
-  `);
+  await query(createLiveLocationTableSql());
 
   // Create indexes if not exist (PostgreSQL safe way)
   await query(`
@@ -57,7 +41,7 @@ const insertLocation = async (record) => {
       record.speed,
       record.address,
       record.deviceInfo,
-      record.isSuspicious ? true : false,
+      isMysql() ? (record.isSuspicious ? 1 : 0) : record.isSuspicious ? true : false,
       record.gpsRiskScore ?? null,
       record.gpsFlags ?? null,
     ]

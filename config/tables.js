@@ -1,4 +1,8 @@
-/** Supabase tables migrated from SQL Server use dbo.* names in the public schema. */
-const tbl = (name) => `"dbo.${name}"`;
+/**
+ * Table names — PostgreSQL uses dbo.* import names; MySQL uses plain table names.
+ */
+const { tbl: dialectTbl, isMysql } = require("./dialect");
 
-module.exports = { tbl };
+const tbl = (name) => dialectTbl(name);
+
+module.exports = { tbl, isMysql };

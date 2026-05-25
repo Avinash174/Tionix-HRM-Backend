@@ -20,6 +20,7 @@ const {
 const { emitEvent } = require("../sockets");
 const marketingService = require("../services/marketingService");
 const { MarketingApiError } = require("../utils/marketingAttendance");
+const { errorResponse } = require("../utils/apiError");
 const {
   formatOfficeForEmployee,
   getAssignedOfficeForUser,
@@ -375,11 +376,10 @@ const markAttendance = async (req, res) => {
                 allowed: err.details?.allowed,
             });
         }
-        res.status(statusCode).json({ 
-            success: false, 
-            message: err.message,
+        res.status(statusCode).json({
+            ...errorResponse(err, "Attendance request failed"),
             distance: err.details?.distance,
-            allowed: err.details?.allowed
+            allowed: err.details?.allowed,
         });
     }
 };
