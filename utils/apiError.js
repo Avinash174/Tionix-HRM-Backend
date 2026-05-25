@@ -1,10 +1,19 @@
 /**
  * Build a non-empty error message for API responses (Postgres, MySQL, network).
  */
+const cloudDbHint = () =>
+  "Database unreachable from cloud (Render/Railway/Vercel). " +
+  "Set DATABASE_URL to your Supabase URL (not localhost). " +
+  "Use DB_DRIVER=postgres and remove MYSQL_HOST=127.0.0.1 on Render.";
+
 const formatApiError = (err, fallback = "Request failed") => {
   if (!err) return fallback;
 
   if (typeof err === "string" && err.trim()) return err.trim();
+
+  if (err.code === "ECONNREFUSED") {
+    return cloudDbHint();
+  }
 
   const parts = [
     err.message,

@@ -8,7 +8,7 @@ const loginAdmin = async (username, password, deviceInfo = null) => {
   const result = await query(
     `SELECT "pkUserId", "UserName", "fkECId", "SysDefined", "fkEmpId"
      FROM "dbo.AppUser"
-     WHERE TRIM("UserName") = $1
+     WHERE LOWER(TRIM("UserName")) = LOWER($1)
        AND TRIM("Password") = $2
        AND COALESCE("SysDefined"::int, 0) = 1
      LIMIT 1`,

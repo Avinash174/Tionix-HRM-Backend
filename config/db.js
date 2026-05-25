@@ -28,6 +28,39 @@ const useMysql = driver === "mysql";
 
 const connectionString = process.env.DATABASE_URL;
 
+const isCloudHost = () =>
+  !!(process.env.RENDER || process.env.RAILWAY_ENVIRONMENT || process.env.VERCEL);
+
+const validateDatabaseConfig = () => {
+  if (useMysql) {
+    const host = process.env.MYSQL_HOST || "127.0.0.1";
+    const localHost = host === "127.0.0.1" || host === "localhost";
+    if (localHost && (isCloudHost() || process.env.NODE_ENV === "production")) {
+      throw new Error(
+        "DB_DRIVER=mysql with MYSQL_HOST=127.0.0.1 cannot run on Render. " +
+          "Use DB_DRIVER=postgres and DATABASE_URL=your Supabase connection string."
+      );
+    }
+    return;
+  }
+
+  const url = (connectionString || "").toLowerCase();
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL is not set. On Render: Environment → add DATABASE_URL (Supabase URL)."
+    );
+  }
+  if (
+    (url.includes("127.0.0.1") || url.includes("localhost")) &&
+    (isCloudHost() || process.env.NODE_ENV === "production")
+  ) {
+    throw new Error(
+      "DATABASE_URL points to localhost — Render cannot reach your Mac. " +
+        "Use Supabase: postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres"
+    );
+  }
+};
+
 const isLocalDatabase = () => {
   if (useMysql) return true;
   if (process.env.DB_SSL === "false") return true;
@@ -120,6 +153,7 @@ const query = async (text, params) => {
 
 const connectDB = async () => {
   try {
+    validateDatabaseConfig();
     if (useMysql) {
       const conn = await mysqlPool.getConnection();
       const db = process.env.MYSQL_DATABASE || "IERPSystem";

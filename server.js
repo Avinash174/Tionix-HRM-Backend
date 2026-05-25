@@ -1,6 +1,9 @@
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
 const express = require("express");
 const http = require("http");
+const https = require("https");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -72,19 +75,82 @@ app.use((err, req, res, next) => {
   );
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(process.env.PORT || "5000", 10);
+const HOST = process.env.HOST || "0.0.0.0";
+const USE_HTTPS =
+  String(process.env.USE_HTTPS || "")
+    .trim()
+    .toLowerCase() === "true";
 
-const server = http.createServer(app);
+const getLanIpv4Addresses = () => {
+  const ips = [];
+  const nets = os.networkInterfaces();
+  for (const iface of Object.values(nets)) {
+    for (const net of iface || []) {
+      if (net.family === "IPv4" && !net.internal) ips.push(net.address);
+    }
+  }
+  return [...new Set(ips)];
+};
+
+const createHttpServer = () => {
+  if (!USE_HTTPS) return http.createServer(app);
+
+  const keyPath =
+    process.env.SSL_KEY_PATH || path.join(__dirname, "certs", "key.pem");
+  const certPath =
+    process.env.SSL_CERT_PATH || path.join(__dirname, "certs", "cert.pem");
+
+  if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+    console.error(
+      "USE_HTTPS=true but certs missing. Run: npm run cert:dev\n" +
+        "  Or set SSL_KEY_PATH / SSL_CERT_PATH"
+    );
+    process.exit(1);
+  }
+
+  return https.createServer(
+    {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    },
+    app
+  );
+};
+
+const server = createHttpServer();
 initSockets(server);
+
+const logServerUrls = () => {
+  const protocol = USE_HTTPS ? "https" : "http";
+  console.log(`Server running (${protocol}) on ${HOST}:${PORT}`);
+  if (HOST === "0.0.0.0" || HOST === "::") {
+    console.log(`  Local:  ${protocol}://127.0.0.1:${PORT}`);
+    for (const ip of getLanIpv4Addresses()) {
+      console.log(`  LAN:    ${protocol}://${ip}:${PORT}`);
+    }
+  } else {
+    console.log(`  URL:    ${protocol}://${HOST}:${PORT}`);
+  }
+};
 
 const startServer = async () => {
   try {
     await connectDB();
-    server.listen(PORT, () => {
-      console.log(`Server running on ${PORT}`);
+    server.listen(PORT, HOST, () => logServerUrls());
+    server.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `Port ${PORT} is already in use. Stop the other process:\n` +
+            `  lsof -ti :${PORT} | xargs kill -9`
+        );
+        process.exit(1);
+      }
+      throw err;
     });
   } catch (err) {
     console.error("Failed to start server:", err);
+    process.exit(1);
   }
 };
 

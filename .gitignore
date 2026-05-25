@@ -77,6 +77,9 @@ Thumbs.db
 # Uploads (user uploaded files - usually not committed)
 uploads/
 
+# Local HTTPS dev certs
+certs/
+
 # Database / SQL scripts if sensitive
 # database.sql  # Uncomment if you don't want to commit schema
 

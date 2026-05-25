@@ -8,7 +8,7 @@ const User = {
 
     const result = await query(
       `SELECT * FROM "dbo.AppUser"
-       WHERE TRIM("UserName") = $1
+       WHERE LOWER(TRIM("UserName")) = LOWER($1)
          AND TRIM("Password") = $2
          AND "fkEmpId" IS NOT NULL
        LIMIT 1`,
@@ -23,7 +23,7 @@ const User = {
 
     const result = await query(
       `SELECT * FROM "dbo.AppUser"
-       WHERE TRIM("UserName") = $1
+       WHERE LOWER(TRIM("UserName")) = LOWER($1)
          AND TRIM("Password") = $2
          AND (
            "fkEmpId" IS NOT NULL
