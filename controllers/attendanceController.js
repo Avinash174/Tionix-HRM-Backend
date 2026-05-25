@@ -185,31 +185,11 @@ const markAttendance = async (req, res) => {
     // Resolve UserId to EmpCode
     if (userId) {
         try {
-            const { sql } = require("../config/db");
-            let userResult;
-            
-            // Safe resolution using explicit types to avoid conversion errors
-            if (typeof userId === 'string' && userId.startsWith('U')) {
-                userResult = await new sql.Request()
-                    .input('userId', sql.VarChar, userId)
-                    .query('SELECT fkEmpId, UserName FROM dbo.AppUser WHERE pkUserId = @userId');
-            } else if (!isNaN(userId) && userId.toString().trim() !== "") {
-                userResult = await new sql.Request()
-                    .input('userIdNum', sql.Numeric, parseFloat(userId))
-                    .query('SELECT fkEmpId, UserName FROM dbo.AppUser WHERE fkEmpId = @userIdNum');
+            const resolved = await resolveEmployeeIdentity(userId);
+            if (resolved && resolved.empCode != null) {
+                finalEmpCode = resolved.empCode;
+                if (!req.user) empName = resolved.empName || empName;
             } else {
-                userResult = await new sql.Request()
-                    .input('userId', sql.VarChar, userId.toString())
-                    .query('SELECT fkEmpId, UserName FROM dbo.AppUser WHERE pkUserId = @userId');
-            }
-
-            if (userResult.recordset.length > 0) {
-                finalEmpCode = userResult.recordset[0].fkEmpId;
-                if (!req.user) {
-                    empName = userResult.recordset[0].UserName;
-                }
-            } else {
-                // If not found in AppUser, fallback to the provided ID
                 finalEmpCode = userId;
             }
         } catch (err) {
@@ -477,25 +457,9 @@ const getRecentAttendance = async (req, res) => {
 
         // Resolve pkUserId to fkEmpId if necessary
         try {
-            const { sql } = require("../config/db");
-            let userResult;
-            
-            if (typeof userId === 'string' && userId.startsWith('U')) {
-                userResult = await new sql.Request()
-                    .input('userId', sql.VarChar, userId)
-                    .query('SELECT fkEmpId FROM dbo.AppUser WHERE pkUserId = @userId');
-            } else if (!isNaN(userId) && userId.toString().trim() !== "") {
-                userResult = await new sql.Request()
-                    .input('userIdNum', sql.Numeric, parseFloat(userId))
-                    .query('SELECT fkEmpId FROM dbo.AppUser WHERE fkEmpId = @userIdNum');
-            } else {
-                userResult = await new sql.Request()
-                    .input('userId', sql.VarChar, userId.toString())
-                    .query('SELECT fkEmpId FROM dbo.AppUser WHERE pkUserId = @userId');
-            }
-
-            if (userResult.recordset.length > 0 && userResult.recordset[0].fkEmpId) {
-                finalEmpCode = userResult.recordset[0].fkEmpId;
+            const resolved = await resolveEmployeeIdentity(userId);
+            if (resolved && resolved.empCode != null) {
+                finalEmpCode = resolved.empCode;
                 console.log(`[getRecentAttendance] Resolved to finalEmpCode: ${finalEmpCode}`);
             }
         } catch (err) {
@@ -527,25 +491,9 @@ const getAttendanceByEmpCode = async (req, res) => {
         // Resolve UserId to EmpCode
         if (empCode) {
             try {
-                const { sql } = require("../config/db");
-                let userResult;
-                
-                if (typeof empCode === 'string' && empCode.startsWith('U')) {
-                    userResult = await new sql.Request()
-                        .input('empCode', sql.VarChar, empCode)
-                        .query('SELECT fkEmpId FROM dbo.AppUser WHERE pkUserId = @empCode');
-                } else if (!isNaN(empCode) && empCode.toString().trim() !== "") {
-                    userResult = await new sql.Request()
-                        .input('empCodeNum', sql.Numeric, parseFloat(empCode))
-                        .query('SELECT fkEmpId FROM dbo.AppUser WHERE fkEmpId = @empCodeNum');
-                } else {
-                    userResult = await new sql.Request()
-                        .input('empCode', sql.VarChar, empCode.toString())
-                        .query('SELECT fkEmpId FROM dbo.AppUser WHERE pkUserId = @empCode');
-                }
-
-                if (userResult.recordset.length > 0 && userResult.recordset[0].fkEmpId) {
-                    empCode = userResult.recordset[0].fkEmpId;
+                const resolved = await resolveEmployeeIdentity(empCode);
+                if (resolved && resolved.empCode != null) {
+                    empCode = resolved.empCode;
                     console.log(`[getAttendanceByEmpCode] Resolved to empCode: ${empCode}`);
                 }
             } catch (err) {
@@ -661,29 +609,8 @@ const getAttendanceConfig = async (req, res) => {
 };
 
 const resolveFinalEmpCode = async (userId) => {
-    let finalEmpCode = userId;
-    const { sql } = require("../config/db");
-    let userResult;
-
-    if (typeof userId === "string" && userId.startsWith("U")) {
-        userResult = await new sql.Request()
-            .input("userId", sql.VarChar, userId)
-            .query("SELECT fkEmpId FROM dbo.AppUser WHERE pkUserId = @userId");
-    } else if (!isNaN(userId) && userId.toString().trim() !== "") {
-        userResult = await new sql.Request()
-            .input("userIdNum", sql.Numeric, parseFloat(userId))
-            .query("SELECT fkEmpId FROM dbo.AppUser WHERE fkEmpId = @userIdNum");
-    } else {
-        userResult = await new sql.Request()
-            .input("userId", sql.VarChar, userId.toString())
-            .query("SELECT fkEmpId FROM dbo.AppUser WHERE pkUserId = @userId");
-    }
-
-    if (userResult.recordset.length > 0 && userResult.recordset[0].fkEmpId) {
-        finalEmpCode = userResult.recordset[0].fkEmpId;
-    }
-
-    return finalEmpCode;
+    const resolved = await resolveEmployeeIdentity(userId);
+    return resolved?.empCode ?? userId;
 };
 
 const getShiftSchedule = async (req, res) => {

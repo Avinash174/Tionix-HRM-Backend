@@ -1,4 +1,4 @@
-const { sql } = require("../config/db");
+const { query } = require("../config/db");
 const User = require("../models/userModel");
 const {
   MarketingApiError,
@@ -11,40 +11,26 @@ const {
 } = require("../utils/marketingAttendance");
 
 const getOpenAttendanceLog = async (userId) => {
-  const result = await new sql.Request()
-    .input('userId', sql.VarChar, userId)
-    .query(`
-      SELECT TOP 1 *
-      FROM marketing_attendance_logs
-      WHERE user_id = @userId
-        AND punch_out_time IS NULL
-      ORDER BY punch_in_time DESC
-    `);
-  return result.recordset[0] || null;
+  const result = await query(
+    `SELECT * FROM marketing_attendance_logs
+     WHERE user_id = $1 AND punch_out_time IS NULL
+     ORDER BY punch_in_time DESC LIMIT 1`,
+    [userId]
+  );
+  return result.rows[0] || null;
 };
 
 const getAttendanceLogByDate = async (userId, attendanceDate) => {
-  const result = await new sql.Request()
-    .input('userId', sql.VarChar, userId)
-    .input('attendanceDate', sql.Date, attendanceDate)
-    .query(`
-      SELECT TOP 1 *
-      FROM marketing_attendance_logs
-      WHERE user_id = @userId
-        AND attendance_date = @attendanceDate
-      ORDER BY punch_in_time DESC
-    `);
-  return result.recordset[0] || null;
+  const result = await query(
+    `SELECT * FROM marketing_attendance_logs
+     WHERE user_id = $1 AND attendance_date = $2
+     ORDER BY punch_in_time DESC LIMIT 1`,
+    [userId, attendanceDate]
+  );
+  return result.rows[0] || null;
 };
 
-exports.punchIn = async ({
-  userId,
-  latitude,
-  longitude,
-  remark,
-  userAgent,
-  userIp,
-}) => {
+exports.punchIn = async ({ userId, latitude, longitude, remark, userAgent, userIp }) => {
   ensureMarketingUserId(userId);
 
   const user = await User.findByPkUserIdCore(userId);
@@ -69,58 +55,24 @@ exports.punchIn = async ({
 
   const matchedLocation = await resolveAttendanceLocation(userId, parsedLatitude, parsedLongitude);
 
-  const result = await new sql.Request()
-    .input('userId', sql.VarChar, userId)
-    .input('attendanceDate', sql.Date, attendanceDate)
-    .input('latitude', sql.Numeric, parsedLatitude)
-    .input('longitude', sql.Numeric, parsedLongitude)
-    .input('address', sql.VarChar, matchedLocation.address)
-    .input('locationType', sql.VarChar, matchedLocation.location_type)
-    .input('locationId', sql.VarChar, matchedLocation.location_id)
-    .input('allowedRadius', sql.Numeric, Number(matchedLocation.allowed_radius))
-    .input('actualDistance', sql.Numeric, Number(matchedLocation.distance))
-    .input('remark', sql.VarChar, remark || null)
-    .input('userIp', sql.VarChar, userIp || null)
-    .input('userAgent', sql.VarChar, userAgent || null)
-    .query(`
-      INSERT INTO marketing_attendance_logs (
-        user_id,
-        attendance_date,
-        punch_in_time,
-        total_work_minutes,
-        punch_in_latitude,
-        punch_in_longitude,
-        punch_in_address,
-        location_type,
-        location_id,
-        allowed_radius,
-        actual_distance_meters,
-        punch_in_status,
-        punch_in_remark,
-        user_ip,
-        user_agent
-      )
-      OUTPUT INSERTED.*
-      VALUES (
-        @userId,
-        @attendanceDate,
-        SYSUTCDATETIME(),
-        0,
-        @latitude,
-        @longitude,
-        @address,
-        @locationType,
-        @locationId,
-        @allowedRadius,
-        @actualDistance,
-        'success',
-        @remark,
-        @userIp,
-        @userAgent
-      )
-    `);
+  const result = await query(
+    `INSERT INTO marketing_attendance_logs (
+       user_id, attendance_date, punch_in_time, total_work_minutes,
+       punch_in_latitude, punch_in_longitude, punch_in_address,
+       location_type, location_id, allowed_radius, actual_distance_meters,
+       punch_in_status, punch_in_remark, user_ip, user_agent
+     ) VALUES ($1, $2, NOW(), 0, $3, $4, $5, $6, $7, $8, $9, 'success', $10, $11, $12)
+     RETURNING *`,
+    [
+      userId, attendanceDate, parsedLatitude, parsedLongitude,
+      matchedLocation.address, matchedLocation.location_type,
+      matchedLocation.location_id, Number(matchedLocation.allowed_radius),
+      Number(matchedLocation.distance), remark || null,
+      userIp || null, userAgent || null,
+    ]
+  );
 
-  const attendance = result.recordset[0];
+  const attendance = result.rows[0];
 
   return {
     attendance,

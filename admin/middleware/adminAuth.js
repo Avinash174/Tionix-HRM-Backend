@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { sql } = require("../../config/db");
+const { query } = require("../../config/db");
 const adminSessionService = require("../services/adminSessionService");
 
 const adminAuth = async (req, res, next) => {
@@ -26,16 +26,14 @@ const adminAuth = async (req, res, next) => {
       return next();
     }
 
-    const adminRow = await new sql.Request()
-      .input("pkUserId", sql.VarChar, decoded.id)
-      .query(`
-        SELECT pkUserId, UserName, fkECId, SysDefined
-        FROM dbo.AppUser
-        WHERE pkUserId = @pkUserId
-          AND SysDefined = 1
-      `);
+    const adminResult = await query(
+      `SELECT "pkUserId", "UserName", "fkECId", "SysDefined"
+       FROM "AppUser"
+       WHERE "pkUserId" = $1 AND "SysDefined" = true`,
+      [decoded.id]
+    );
 
-    if (!adminRow.recordset[0]) {
+    if (!adminResult.rows[0]) {
       return res.status(403).json({ success: false, message: "Admin access denied" });
     }
 

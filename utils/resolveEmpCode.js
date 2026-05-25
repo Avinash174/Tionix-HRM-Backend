@@ -1,28 +1,28 @@
-const { sql } = require("../config/db");
+const { query } = require("../config/db");
 
 const resolveFinalEmpCode = async (userId) => {
   if (userId == null || userId === "") return null;
 
-  let userResult;
-
+  let result;
   if (typeof userId === "string" && userId.startsWith("U")) {
-    userResult = await new sql.Request()
-      .input("userId", sql.VarChar, userId)
-      .query("SELECT fkEmpId, UserName FROM dbo.AppUser WHERE pkUserId = @userId");
+    result = await query(
+      `SELECT "fkEmpId", "UserName" FROM "AppUser" WHERE "pkUserId" = $1`,
+      [userId]
+    );
   } else if (!isNaN(userId) && userId.toString().trim() !== "") {
-    userResult = await new sql.Request()
-      .input("userIdNum", sql.Numeric, parseFloat(userId))
-      .query("SELECT fkEmpId, UserName FROM dbo.AppUser WHERE fkEmpId = @userIdNum");
+    result = await query(
+      `SELECT "fkEmpId", "UserName" FROM "AppUser" WHERE "fkEmpId" = $1`,
+      [parseFloat(userId)]
+    );
   } else {
-    userResult = await new sql.Request()
-      .input("userId", sql.VarChar, userId.toString())
-      .query("SELECT fkEmpId, UserName FROM dbo.AppUser WHERE pkUserId = @userId");
+    result = await query(
+      `SELECT "fkEmpId", "UserName" FROM "AppUser" WHERE "pkUserId" = $1`,
+      [userId.toString()]
+    );
   }
 
-  const row = userResult.recordset[0];
-  if (!row) {
-    return { empCode: userId, empName: null, pkUserId: null };
-  }
+  const row = result.rows[0];
+  if (!row) return { empCode: userId, empName: null, pkUserId: null };
 
   return {
     empCode: row.fkEmpId ?? userId,

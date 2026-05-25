@@ -1,4 +1,4 @@
-const { sql } = require("../config/db");
+const { query } = require("../config/db");
 const {
   getFixedOfficeByLocationId,
   getDefaultRadiusMeters,
@@ -30,26 +30,21 @@ const formatOfficeForEmployee = (office) =>
     : null;
 
 const fetchAppUserByPk = async (pkUserId) => {
-  const result = await new sql.Request()
-    .input("pkUserId", sql.VarChar, pkUserId)
-    .query(`
-      SELECT pkUserId, UserName, fkEmpId, fkLocationId, GeofencePoint, AttendanceMode
-      FROM dbo.AppUser
-      WHERE pkUserId = @pkUserId
-    `);
-  return result.recordset[0] || null;
+  const result = await query(
+    `SELECT "pkUserId", "UserName", "fkEmpId", "fkLocationId", "GeofencePoint", "AttendanceMode"
+     FROM "AppUser" WHERE "pkUserId" = $1`,
+    [pkUserId]
+  );
+  return result.rows[0] || null;
 };
 
 const fetchAppUserByEmpId = async (fkEmpId) => {
-  const result = await new sql.Request()
-    .input("empId", sql.Numeric, Number(fkEmpId))
-    .query(`
-      SELECT TOP 1 pkUserId, UserName, fkEmpId, fkLocationId, GeofencePoint, AttendanceMode
-      FROM dbo.AppUser
-      WHERE fkEmpId = @empId
-      ORDER BY pkUserId
-    `);
-  return result.recordset[0] || null;
+  const result = await query(
+    `SELECT "pkUserId", "UserName", "fkEmpId", "fkLocationId", "GeofencePoint", "AttendanceMode"
+     FROM "AppUser" WHERE "fkEmpId" = $1 ORDER BY "pkUserId" LIMIT 1`,
+    [Number(fkEmpId)]
+  );
+  return result.rows[0] || null;
 };
 
 const getFixedOfficeForAppUser = (appUser) => {
