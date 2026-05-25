@@ -63,7 +63,7 @@ const getEmployeeSalaryStructure = async (req, res, next) => {
       success: true,
       exists: result.exists,
       hasCtc: result.hasCtc,
-      sourceTable: result.sourceTable || "SalStructure",
+      sourceTable: result.sourceTable || "dbo.SalStructure",
       employee: result.employee,
       salaryStructure: result.salaryStructure,
       ctc: result.ctc,

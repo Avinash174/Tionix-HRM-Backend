@@ -1,10 +1,10 @@
 const { query } = require("../../config/db");
 
-const TABLE_NAME = `"OfficeGeoFence"`;
+const TABLE_NAME = `"dbo.OfficeGeoFence"`;
 
 const ensureOfficeGeoFenceTable = async () => {
   await query(`
-    CREATE TABLE IF NOT EXISTS "OfficeGeoFence" (
+    CREATE TABLE IF NOT EXISTS "dbo.OfficeGeoFence" (
       "pkGeoId"      SERIAL PRIMARY KEY,
       "fkHLId"       INT           NOT NULL,
       "OfficeName"   VARCHAR(100)  NULL,
@@ -16,7 +16,7 @@ const ensureOfficeGeoFenceTable = async () => {
     )
   `);
   await query(`
-    CREATE INDEX IF NOT EXISTS ix_office_geofence ON "OfficeGeoFence" ("fkHLId", "IsActive")
+    CREATE INDEX IF NOT EXISTS ix_office_geofence ON "dbo.OfficeGeoFence" ("fkHLId", "IsActive")
   `);
 };
 

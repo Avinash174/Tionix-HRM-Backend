@@ -9,8 +9,8 @@ const buildOfficeAnalytics = async () => {
   const date = toDateString();
   const totals = await query(
     `SELECT
-       (SELECT COUNT(*) FROM "AppUser" WHERE "fkEmpId" IS NOT NULL) AS "totalEmployees",
-       (SELECT COUNT(DISTINCT "EmpCode") FROM "Attendance" WHERE "AtDate" = $1 AND "Punch" = 'Check IN') AS "presentEmployees"`,
+       (SELECT COUNT(*) FROM "dbo.AppUser" WHERE "fkEmpId" IS NOT NULL) AS "totalEmployees",
+       (SELECT COUNT(DISTINCT "EmpCode") FROM "dbo.Attendance" WHERE "AtDate" = $1 AND "Punch" = 'Check IN') AS "presentEmployees"`,
     [date]
   );
   const stats = totals.rows[0] || {};
@@ -43,7 +43,7 @@ const createOffice = async ({
   address = null,
 }) => {
   const result = await query(
-    `INSERT INTO "AttendanceLocations" ("LocationName", "Latitude", "Longitude", "AllowedRadius", "LocationType", "Address")
+    `INSERT INTO "dbo.AttendanceLocations" ("LocationName", "Latitude", "Longitude", "AllowedRadius", "LocationType", "Address")
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING "LocationID" AS "officeId", "LocationName" AS "officeName",
                "Latitude" AS "latitude", "Longitude" AS "longitude",
@@ -68,7 +68,7 @@ const updateOffice = async (officeId, { officeName, latitude, longitude, allowed
   if (sets.length === 0) return null;
 
   const result = await query(
-    `UPDATE "AttendanceLocations"
+    `UPDATE "dbo.AttendanceLocations"
      SET ${sets.join(", ")}
      WHERE "LocationID" = $1
      RETURNING "LocationID" AS "officeId", "LocationName" AS "officeName",
@@ -82,7 +82,7 @@ const updateOffice = async (officeId, { officeName, latitude, longitude, allowed
 
 const deleteOffice = async (officeId) => {
   const result = await query(
-    `UPDATE "AttendanceLocations" SET "IsActive" = false WHERE "LocationID" = $1`,
+    `UPDATE "dbo.AttendanceLocations" SET "IsActive" = false WHERE "LocationID" = $1`,
     [officeId]
   );
   return result.rowCount > 0;

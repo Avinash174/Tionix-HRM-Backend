@@ -62,8 +62,12 @@ app.use("/api/hrm/admin", adminRoutes);
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({
-    error: "Internal Server Error",
-    message: process.env.NODE_ENV === "production" ? "Something went wrong" : err.message,
+    success: false,
+    message:
+      err.message ||
+      err.detail ||
+      (process.env.NODE_ENV === "production" ? "Something went wrong" : "Internal Server Error"),
+    code: err.code,
   });
 });
 

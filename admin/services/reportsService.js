@@ -8,7 +8,7 @@ const getAttendanceReport = async (q = {}) => {
 
   const result = await query(
     `SELECT "AtDate", COUNT(DISTINCT "EmpCode") AS "presentCount"
-     FROM "Attendance"
+     FROM "dbo.Attendance"
      WHERE "AtDate" BETWEEN $1 AND $2 AND "Punch" = 'Check IN'
      GROUP BY "AtDate"
      ORDER BY "AtDate"`,
@@ -26,7 +26,7 @@ const getProductivityReport = async (q = {}) => {
     `SELECT "EmpCode", "AtDate",
             MIN("PunchDatetime") AS "firstPunch",
             MAX("PunchDatetime") AS "lastPunch"
-     FROM "Attendance"
+     FROM "dbo.Attendance"
      WHERE "AtDate" BETWEEN $1 AND $2
      GROUP BY "EmpCode", "AtDate"
      ORDER BY "AtDate" DESC`,

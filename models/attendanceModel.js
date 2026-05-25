@@ -4,7 +4,7 @@ const Attendance = {
   // Get recent 50 attendance records
   getRecentAttendance: async () => {
     const result = await query(
-      `SELECT * FROM "Attendance" ORDER BY "PunchDatetime" DESC LIMIT 50`
+      `SELECT * FROM "dbo.Attendance" ORDER BY "PunchDatetime" DESC LIMIT 50`
     );
     return result.rows;
   },
@@ -14,7 +14,7 @@ const Attendance = {
     const result = await query(
       `SELECT "EmpCode", "EmpName", "Punch", "PunchDatetime",
               "Latitude", "Longitude", "Address", "Device"
-       FROM "Attendance"
+       FROM "dbo.Attendance"
        WHERE "EmpCode" = $1
        ORDER BY "PunchDatetime" DESC
        LIMIT 100`,
@@ -30,7 +30,7 @@ const Attendance = {
     console.log(`Inserting Attendance: EmpCode=${empCode}, Punch=${status}`);
 
     await query(
-      `INSERT INTO "Attendance" (
+      `INSERT INTO "dbo.Attendance" (
         "PayCode", "EmpCode", "EmpName", "AtDate", "PunchTime",
         "PunchDatetime", "Device", "Punch", "Manual", "Status",
         "Latitude", "Longitude", "Address"
@@ -48,7 +48,7 @@ const Attendance = {
   // Check if a specific punch exists for today
   checkExisting: async (empCode, status) => {
     const result = await query(
-      `SELECT 1 FROM "Attendance"
+      `SELECT 1 FROM "dbo.Attendance"
        WHERE "EmpCode" = $1
          AND "Punch" = $2
          AND "AtDate" = CURRENT_DATE::text`,
@@ -61,7 +61,7 @@ const Attendance = {
   getLastPunchToday: async (empCode) => {
     const result = await query(
       `SELECT "Punch", "PunchDatetime", "Address"
-       FROM "Attendance"
+       FROM "dbo.Attendance"
        WHERE "EmpCode" = $1
          AND "AtDate" = CURRENT_DATE::text
        ORDER BY "PunchDatetime" DESC
@@ -83,7 +83,7 @@ const Attendance = {
           "Address"      AS address,
           "AllowedRadius" AS allowed_radius,
           "LocationType"  AS location_type
-         FROM "AttendanceLocations"
+         FROM "dbo.AttendanceLocations"
          WHERE "IsActive" = true`
       );
       return result.rows;
@@ -109,7 +109,7 @@ const Attendance = {
         "Address"       AS address,
         "AllowedRadius" AS allowed_radius,
         "LocationType"  AS location_type
-       FROM "AttendanceLocations"
+       FROM "dbo.AttendanceLocations"
        WHERE "LocationID" = $1 AND "IsActive" = true`,
       [parsedId]
     );

@@ -12,8 +12,8 @@ const listEmployees = async (q = {}) => {
     `SELECT u."pkUserId", u."UserName", u."fkEmpId", u."Email", u."Phone",
             u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
             l."LocationName" AS "officeName"
-     FROM "AppUser" u
-     LEFT JOIN "AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+     FROM "dbo.AppUser" u
+     LEFT JOIN "dbo.AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
      WHERE u."fkEmpId" IS NOT NULL
        AND ($1::text IS NULL OR u."UserName" ILIKE $1 OR u."fkEmpId"::text ILIKE $1)
        AND ($2::int IS NULL OR u."fkLocationId" = $2)
@@ -23,7 +23,7 @@ const listEmployees = async (q = {}) => {
   );
 
   const totalResult = await query(
-    `SELECT COUNT(*) AS total FROM "AppUser" u
+    `SELECT COUNT(*) AS total FROM "dbo.AppUser" u
      WHERE u."fkEmpId" IS NOT NULL
        AND ($1::text IS NULL OR u."UserName" ILIKE $1 OR u."fkEmpId"::text ILIKE $1)
        AND ($2::int IS NULL OR u."fkLocationId" = $2)`,
@@ -43,8 +43,8 @@ const resolveEmployee = async (id) => {
       `SELECT u."pkUserId", u."UserName", u."fkEmpId", u."Email", u."Phone",
               u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
               l."LocationName" AS "officeName"
-       FROM "AppUser" u
-       LEFT JOIN "AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+       FROM "dbo.AppUser" u
+       LEFT JOIN "dbo.AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
        WHERE u."fkEmpId" = $1`,
       [numericId]
     );
@@ -55,8 +55,8 @@ const resolveEmployee = async (id) => {
     `SELECT u."pkUserId", u."UserName", u."fkEmpId", u."Email", u."Phone",
             u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
             l."LocationName" AS "officeName"
-     FROM "AppUser" u
-     LEFT JOIN "AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+     FROM "dbo.AppUser" u
+     LEFT JOIN "dbo.AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
      WHERE u."pkUserId" = $1`,
     [id]
   );
@@ -84,7 +84,7 @@ const updateEmployee = async (id, patch = {}) => {
         throw error;
       }
       const officeResult = await query(
-        `SELECT "LocationID" FROM "AttendanceLocations" WHERE "LocationID" = $1 AND "IsActive" = true`,
+        `SELECT "LocationID" FROM "dbo.AttendanceLocations" WHERE "LocationID" = $1 AND "IsActive" = true`,
         [parsedLocationId]
       );
       if (!officeResult.rows[0]) {
@@ -97,7 +97,7 @@ const updateEmployee = async (id, patch = {}) => {
   }
 
   await query(
-    `UPDATE "AppUser"
+    `UPDATE "dbo.AppUser"
      SET "UserName" = $1, "Email" = $2, "Phone" = $3, "fkLocationId" = $4
      WHERE "pkUserId" = $5`,
     [nextUserName, nextEmail, nextPhone, nextLocationId, employee.pkUserId]
@@ -109,7 +109,7 @@ const updateEmployee = async (id, patch = {}) => {
 const deleteEmployee = async (id) => {
   const employee = await resolveEmployee(id);
   if (!employee) return null;
-  await query(`DELETE FROM "AppUser" WHERE "pkUserId" = $1`, [employee.pkUserId]);
+  await query(`DELETE FROM "dbo.AppUser" WHERE "pkUserId" = $1`, [employee.pkUserId]);
   return employee;
 };
 
@@ -121,7 +121,7 @@ const getAttendanceSummary = async (empCode) => {
        COUNT(CASE WHEN "Punch" = 'Check IN' THEN 1 END) AS "checkIns",
        COUNT(CASE WHEN "Punch" = 'Check OUT' THEN 1 END) AS "checkOuts",
        MAX("PunchDatetime") AS "lastPunchAt"
-     FROM "Attendance"
+     FROM "dbo.Attendance"
      WHERE "EmpCode" = $1 AND "AtDate" BETWEEN $2 AND $3`,
     [empCode.toString(), toDateString(start), toDateString(end)]
   );
@@ -132,7 +132,7 @@ const getActivityLogs = async (empCode) => {
   if (!empCode) return [];
   const result = await query(
     `SELECT "Punch", "PunchDatetime", "Address", "Device"
-     FROM "Attendance"
+     FROM "dbo.Attendance"
      WHERE "EmpCode" = $1
      ORDER BY "PunchDatetime" DESC
      LIMIT 20`,

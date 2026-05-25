@@ -79,9 +79,15 @@ const login = async (req, res) => {
       });
     }
   } catch (err) {
-    console.error(`Login error: ${err.message}`);
+    const message =
+      err.message ||
+      err.detail ||
+      (err.code ? `Database error (${err.code})` : "Login failed");
+    console.error("Login error:", err);
     res.status(500).json({
-      error: err.message,
+      success: false,
+      message,
+      code: err.code || undefined,
     });
   }
 };
@@ -160,7 +166,11 @@ const logout = async (req, res) => {
       message: "Logged out successfully",
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Token refresh failed",
+      code: err.code,
+    });
   }
 };
 

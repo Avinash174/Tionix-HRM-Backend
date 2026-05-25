@@ -7,10 +7,10 @@ const loginAdmin = async (username, password, deviceInfo = null) => {
 
   const result = await query(
     `SELECT "pkUserId", "UserName", "fkECId", "SysDefined", "fkEmpId"
-     FROM "AppUser"
+     FROM "dbo.AppUser"
      WHERE TRIM("UserName") = $1
        AND TRIM("Password") = $2
-       AND "SysDefined" = true
+       AND COALESCE("SysDefined"::int, 0) = 1
      LIMIT 1`,
     [trimmedUser, trimmedPass]
   );
@@ -36,7 +36,7 @@ const loginAdmin = async (username, password, deviceInfo = null) => {
 const getAdminProfile = async (adminId) => {
   const result = await query(
     `SELECT "pkUserId", "UserName", "fkECId", "LastStatus"
-     FROM "AppUser"
+     FROM "dbo.AppUser"
      WHERE "pkUserId" = $1`,
     [adminId]
   );

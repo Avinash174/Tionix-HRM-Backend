@@ -8,12 +8,12 @@ const getTotals = async (dateString) => {
 
   const totals = await query(
     `SELECT
-       (SELECT COUNT(*) FROM "AppUser" WHERE "fkEmpId" IS NOT NULL) AS "totalEmployees",
-       (SELECT COUNT(DISTINCT "EmpCode") FROM "Attendance" WHERE "AtDate" = $1 AND "Punch" = 'Check IN') AS "presentEmployees",
+       (SELECT COUNT(*) FROM "dbo.AppUser" WHERE "fkEmpId" IS NOT NULL) AS "totalEmployees",
+       (SELECT COUNT(DISTINCT "EmpCode") FROM "dbo.Attendance" WHERE "AtDate" = $1 AND "Punch" = 'Check IN') AS "presentEmployees",
        (
          SELECT COUNT(*) FROM (
            SELECT "EmpCode", MIN("PunchDatetime") AS firstIn
-           FROM "Attendance"
+           FROM "dbo.Attendance"
            WHERE "AtDate" = $1 AND "Punch" = 'Check IN'
            GROUP BY "EmpCode"
            HAVING MIN("PunchDatetime")::time > $2::time
@@ -22,7 +22,7 @@ const getTotals = async (dateString) => {
        (
          SELECT COUNT(*) FROM (
            SELECT DISTINCT ON ("EmpCode") "EmpCode", "Punch", "PunchDatetime"
-           FROM "Attendance"
+           FROM "dbo.Attendance"
            WHERE "AtDate" = $1
            ORDER BY "EmpCode", "PunchDatetime" DESC
          ) latest
@@ -52,7 +52,7 @@ const getTotals = async (dateString) => {
 const getAttendanceAnalytics = async (startDate, endDate) => {
   const result = await query(
     `SELECT "AtDate", COUNT(DISTINCT "EmpCode") AS "presentCount"
-     FROM "Attendance"
+     FROM "dbo.Attendance"
      WHERE "AtDate" BETWEEN $1 AND $2 AND "Punch" = 'Check IN'
      GROUP BY "AtDate"
      ORDER BY "AtDate"`,

@@ -13,7 +13,7 @@ const ensureAdminSessionsTable = async () => {
   if (tableReady) return;
 
   await query(`
-    CREATE TABLE IF NOT EXISTS "AdminSessions" (
+    CREATE TABLE IF NOT EXISTS "dbo.AdminSessions" (
       "SessionID"    SERIAL PRIMARY KEY,
       "AdminUserId"  VARCHAR(50)  NOT NULL,
       "RefreshToken" VARCHAR(500) NOT NULL,
@@ -24,11 +24,11 @@ const ensureAdminSessionsTable = async () => {
   `);
   await query(`
     CREATE INDEX IF NOT EXISTS ix_admin_sessions_user_id
-      ON "AdminSessions" ("AdminUserId")
+      ON "dbo.AdminSessions" ("AdminUserId")
   `);
   await query(`
     CREATE UNIQUE INDEX IF NOT EXISTS ux_admin_sessions_refresh_token
-      ON "AdminSessions" ("RefreshToken")
+      ON "dbo.AdminSessions" ("RefreshToken")
   `);
 
   tableReady = true;
@@ -55,7 +55,7 @@ const createSession = async (admin, deviceInfo = null) => {
 
   // Insert placeholder, get session ID
   const placeholder = await query(
-    `INSERT INTO "AdminSessions" ("AdminUserId", "RefreshToken", "DeviceInfo", "ExpiresAt")
+    `INSERT INTO "dbo.AdminSessions" ("AdminUserId", "RefreshToken", "DeviceInfo", "ExpiresAt")
      VALUES ($1, 'pending', $2, $3)
      RETURNING "SessionID"`,
     [admin.pkUserId, deviceInfo, expiresAt]
@@ -66,7 +66,7 @@ const createSession = async (admin, deviceInfo = null) => {
   const accessToken = buildAccessToken(admin, sessionId);
 
   await query(
-    `UPDATE "AdminSessions" SET "RefreshToken" = $1 WHERE "SessionID" = $2`,
+    `UPDATE "dbo.AdminSessions" SET "RefreshToken" = $1 WHERE "SessionID" = $2`,
     [refreshToken, sessionId]
   );
 
@@ -77,7 +77,7 @@ const findSessionByRefreshToken = async (refreshToken) => {
   await ensureAdminSessionsTable();
   const result = await query(
     `SELECT "SessionID", "AdminUserId", "RefreshToken", "DeviceInfo", "CreatedAt", "ExpiresAt"
-     FROM "AdminSessions"
+     FROM "dbo.AdminSessions"
      WHERE "RefreshToken" = $1 AND "ExpiresAt" > NOW()`,
     [refreshToken]
   );
@@ -88,7 +88,7 @@ const findSessionById = async (sessionId) => {
   await ensureAdminSessionsTable();
   const result = await query(
     `SELECT "SessionID", "AdminUserId", "RefreshToken", "DeviceInfo", "CreatedAt", "ExpiresAt"
-     FROM "AdminSessions"
+     FROM "dbo.AdminSessions"
      WHERE "SessionID" = $1 AND "ExpiresAt" > NOW()`,
     [sessionId]
   );
@@ -98,7 +98,7 @@ const findSessionById = async (sessionId) => {
 const deleteSessionByRefreshToken = async (refreshToken) => {
   await ensureAdminSessionsTable();
   await query(
-    `DELETE FROM "AdminSessions" WHERE "RefreshToken" = $1`,
+    `DELETE FROM "dbo.AdminSessions" WHERE "RefreshToken" = $1`,
     [refreshToken]
   );
 };
@@ -106,7 +106,7 @@ const deleteSessionByRefreshToken = async (refreshToken) => {
 const deleteSessionById = async (sessionId) => {
   await ensureAdminSessionsTable();
   await query(
-    `DELETE FROM "AdminSessions" WHERE "SessionID" = $1`,
+    `DELETE FROM "dbo.AdminSessions" WHERE "SessionID" = $1`,
     [sessionId]
   );
 };
@@ -114,7 +114,7 @@ const deleteSessionById = async (sessionId) => {
 const deleteAllSessionsForAdmin = async (adminUserId) => {
   await ensureAdminSessionsTable();
   await query(
-    `DELETE FROM "AdminSessions" WHERE "AdminUserId" = $1`,
+    `DELETE FROM "dbo.AdminSessions" WHERE "AdminUserId" = $1`,
     [adminUserId]
   );
 };
@@ -146,8 +146,8 @@ const refreshSession = async (refreshToken) => {
 
   const adminResult = await query(
     `SELECT "pkUserId", "UserName", "fkECId", "SysDefined"
-     FROM "AppUser"
-     WHERE "pkUserId" = $1 AND "SysDefined" = true
+     FROM "dbo.AppUser"
+     WHERE "pkUserId" = $1 AND COALESCE("SysDefined"::int, 0) = 1
      LIMIT 1`,
     [session.AdminUserId]
   );
@@ -168,7 +168,7 @@ const listActiveSessions = async (adminUserId) => {
   await ensureAdminSessionsTable();
   const result = await query(
     `SELECT "SessionID", "DeviceInfo", "CreatedAt", "ExpiresAt"
-     FROM "AdminSessions"
+     FROM "dbo.AdminSessions"
      WHERE "AdminUserId" = $1 AND "ExpiresAt" > NOW()
      ORDER BY "CreatedAt" DESC`,
     [adminUserId]

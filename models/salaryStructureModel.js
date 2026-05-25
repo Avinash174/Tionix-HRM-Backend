@@ -1,7 +1,7 @@
 const { query } = require("../config/db");
 
-const SALARY_STRUCTURE_TABLE = "SalStructure";
-const SALARY_CTC_TABLE = "SalCTC";
+const SALARY_STRUCTURE_TABLE = "dbo.SalStructure";
+const SALARY_CTC_TABLE = "dbo.SalCTC";
 
 const mapStructureRow = (row) => ({
   salaryStructureId: row.pkSSId,
@@ -50,7 +50,7 @@ const getLatestOfficeLocationByEmpId = async (fkEmpId) => {
     `SELECT s."pkSSId", s."fkEmpId", s."Latitude", s."Longitude", s."SalStart",
             e."Employee", e."EmpCode"
      FROM "${SALARY_STRUCTURE_TABLE}" s
-     LEFT JOIN "SalEmployee" e ON e."pkEmpId" = s."fkEmpId"
+     LEFT JOIN "dbo.SalEmployee" e ON e."pkEmpId" = s."fkEmpId"
      WHERE s."fkEmpId" = $1
      ORDER BY s."SalStart" DESC, s."DateTimestamp" DESC
      LIMIT 1`,
@@ -71,7 +71,7 @@ const getLatestByEmpId = async (fkEmpId) => {
             s."LastStatus", s."DateTimestamp", s."Remarks",
             e."Employee", e."EmpCode"
      FROM "${SALARY_STRUCTURE_TABLE}" s
-     LEFT JOIN "SalEmployee" e ON e."pkEmpId" = s."fkEmpId"
+     LEFT JOIN "dbo.SalEmployee" e ON e."pkEmpId" = s."fkEmpId"
      WHERE s."fkEmpId" = $1
      ORDER BY s."SalStart" DESC, s."DateTimestamp" DESC
      LIMIT 1`,

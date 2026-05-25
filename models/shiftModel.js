@@ -14,7 +14,7 @@ const getActiveTimingForEmployee = async (fkEmpId) => {
        et."Type" AS "timingType",
        et."TSD", et."TED",
        'SalEmpTiming' AS source
-     FROM "SalEmpTiming" et
+     FROM "dbo.SalEmpTiming" et
      WHERE et."fkEmpId" = $1
        AND et."TSD" <= CURRENT_DATE
        AND (et."TED" IS NULL OR et."TED" >= CURRENT_DATE)
@@ -35,8 +35,8 @@ const getActiveTimingForEmployee = async (fkEmpId) => {
        st."SWork", st."EWork", st."SBreak", st."EBreak",
        st."TWork", st."TBreak",
        'SalShiftTiming' AS source
-     FROM "SalEmployee" e
-     LEFT JOIN "SalShiftTiming" st ON st."pkSTId" = e."fkSTId"
+     FROM "dbo.SalEmployee" e
+     LEFT JOIN "dbo.SalShiftTiming" st ON st."pkSTId" = e."fkSTId"
      WHERE e."pkEmpId" = $1
      LIMIT 1`,
     [empIdNum]
@@ -70,7 +70,7 @@ const getEmployeeSummary = async (fkEmpId) => {
 
   const result = await query(
     `SELECT "pkEmpId", "EmpCode", "Employee", "fkSTId", "fkDepId", "fkDegId"
-     FROM "SalEmployee"
+     FROM "dbo.SalEmployee"
      WHERE "pkEmpId" = $1
      LIMIT 1`,
     [empIdNum]

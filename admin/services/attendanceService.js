@@ -11,7 +11,7 @@ const listAttendance = async (q = {}) => {
 
   const result = await query(
     `SELECT "EmpCode", "EmpName", "Punch", "PunchDatetime", "Latitude", "Longitude", "Address", "Device", "AtDate"
-     FROM "Attendance"
+     FROM "dbo.Attendance"
      WHERE ($1::text IS NULL OR "EmpCode" = $1)
        AND ($2::text IS NULL OR "Punch" = $2)
        AND ($3::text IS NULL OR "AtDate" >= $3)
@@ -22,7 +22,7 @@ const listAttendance = async (q = {}) => {
   );
 
   const totalResult = await query(
-    `SELECT COUNT(*) AS total FROM "Attendance"
+    `SELECT COUNT(*) AS total FROM "dbo.Attendance"
      WHERE ($1::text IS NULL OR "EmpCode" = $1)
        AND ($2::text IS NULL OR "Punch" = $2)
        AND ($3::text IS NULL OR "AtDate" >= $3)
@@ -48,7 +48,7 @@ const getHistory = async (q = {}) => {
        MIN(CASE WHEN "Punch" = 'Check IN' THEN "PunchDatetime" END) AS "firstCheckIn",
        MAX(CASE WHEN "Punch" = 'Check OUT' THEN "PunchDatetime" END) AS "lastCheckOut",
        COUNT(*) AS "totalPunches"
-     FROM "Attendance"
+     FROM "dbo.Attendance"
      WHERE ($1::text IS NULL OR "EmpCode" = $1)
        AND ($2::text IS NULL OR "AtDate" >= $2)
        AND ($3::text IS NULL OR "AtDate" <= $3)
@@ -66,7 +66,7 @@ const getReports = async (q = {}) => {
 
   const result = await query(
     `SELECT "AtDate", COUNT(DISTINCT "EmpCode") AS "presentCount"
-     FROM "Attendance"
+     FROM "dbo.Attendance"
      WHERE "AtDate" BETWEEN $1 AND $2
        AND "Punch" = 'Check IN'
      GROUP BY "AtDate"

@@ -28,8 +28,8 @@ const adminAuth = async (req, res, next) => {
 
     const adminResult = await query(
       `SELECT "pkUserId", "UserName", "fkECId", "SysDefined"
-       FROM "AppUser"
-       WHERE "pkUserId" = $1 AND "SysDefined" = true`,
+       FROM "dbo.AppUser"
+       WHERE "pkUserId" = $1 AND COALESCE("SysDefined"::int, 0) = 1`,
       [decoded.id]
     );
 

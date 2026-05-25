@@ -159,7 +159,7 @@ const getLatestLiveByOffice = async (locationId, staleSeconds = 45) => {
        SELECT el.*,
               ROW_NUMBER() OVER (PARTITION BY el.emp_code ORDER BY el.recorded_at DESC) AS rn
        FROM employee_live_locations el
-       INNER JOIN "AppUser" u ON u."fkEmpId"::TEXT = el.emp_code
+       INNER JOIN "dbo.AppUser" u ON u."fkEmpId"::TEXT = el.emp_code
        WHERE u."fkLocationId" = $1
          AND u."fkEmpId" IS NOT NULL
          AND el.recorded_at::date = CURRENT_DATE
@@ -188,7 +188,7 @@ const getLatestLiveByOfficeLatest = async (locationId, staleSeconds = 45) => {
        SELECT el.*,
               ROW_NUMBER() OVER (PARTITION BY el.emp_code ORDER BY el.recorded_at DESC) AS rn
        FROM employee_live_locations el
-       INNER JOIN "AppUser" u ON u."fkEmpId"::TEXT = el.emp_code
+       INNER JOIN "dbo.AppUser" u ON u."fkEmpId"::TEXT = el.emp_code
        WHERE u."fkLocationId" = $1
          AND u."fkEmpId" IS NOT NULL
      ) l
@@ -202,7 +202,7 @@ const getLatestLiveByOfficeLatest = async (locationId, staleSeconds = 45) => {
 const getEmployeesByOffice = async (locationId) => {
   const result = await query(
     `SELECT "fkEmpId", "UserName", "fkLocationId"
-     FROM "AppUser"
+     FROM "dbo.AppUser"
      WHERE "fkLocationId" = $1 AND "fkEmpId" IS NOT NULL`,
     [locationId]
   );
@@ -215,8 +215,8 @@ const getEmployeeOfficeMap = async () => {
        u."fkEmpId", u."UserName", u."fkLocationId",
        l."LocationID", l."LocationName", l."Latitude", l."Longitude",
        l."AllowedRadius", l."Address"
-     FROM "AppUser" u
-     LEFT JOIN "AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+     FROM "dbo.AppUser" u
+     LEFT JOIN "dbo.AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
      WHERE u."fkEmpId" IS NOT NULL`
   );
   return result.rows;

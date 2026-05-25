@@ -32,7 +32,7 @@ const formatOfficeForEmployee = (office) =>
 const fetchAppUserByPk = async (pkUserId) => {
   const result = await query(
     `SELECT "pkUserId", "UserName", "fkEmpId", "fkLocationId", "GeofencePoint", "AttendanceMode"
-     FROM "AppUser" WHERE "pkUserId" = $1`,
+     FROM "dbo.AppUser" WHERE "pkUserId" = $1`,
     [pkUserId]
   );
   return result.rows[0] || null;
@@ -41,7 +41,7 @@ const fetchAppUserByPk = async (pkUserId) => {
 const fetchAppUserByEmpId = async (fkEmpId) => {
   const result = await query(
     `SELECT "pkUserId", "UserName", "fkEmpId", "fkLocationId", "GeofencePoint", "AttendanceMode"
-     FROM "AppUser" WHERE "fkEmpId" = $1 ORDER BY "pkUserId" LIMIT 1`,
+     FROM "dbo.AppUser" WHERE "fkEmpId" = $1 ORDER BY "pkUserId" LIMIT 1`,
     [Number(fkEmpId)]
   );
   return result.rows[0] || null;

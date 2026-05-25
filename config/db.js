@@ -25,8 +25,11 @@ const connectDB = async () => {
 // mssql used @paramName, pg uses $1, $2 — this helper handles that automatically
 const query = (text, params) => pool.query(text, params);
 
+const { tbl } = require("./tables");
+
 module.exports = {
   pool,
   query,
   connectDB,
+  tbl,
 };

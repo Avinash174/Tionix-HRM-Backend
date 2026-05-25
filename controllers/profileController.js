@@ -136,7 +136,7 @@ const getMySalaryStructure = async (req, res) => {
       success: true,
       exists: snapshot.exists,
       hasCtc: snapshot.hasCtc,
-      sourceTable: snapshot.sourceTable || "SalStructure",
+      sourceTable: snapshot.sourceTable || "dbo.SalStructure",
       empCode: fkEmpId.toString(),
       empName: resolved.empName ?? null,
       salaryStructure: snapshot.salaryStructure,

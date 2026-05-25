@@ -72,7 +72,7 @@ const getTodayPunchSummary = async () => {
       MAX(CASE WHEN "Punch" = 'Check OUT' THEN "Address" END)      AS "punchOutAddress",
       MAX("PunchDatetime") AS "lastPunchTime",
       MAX("Punch")         AS "lastPunchStatus"
-    FROM "Attendance"
+    FROM "dbo.Attendance"
     WHERE "AtDate" = CURRENT_DATE::text
     GROUP BY "EmpCode", "EmpName"
   `);
@@ -149,8 +149,8 @@ const getTodayPunchSummaryForOffice = async (locationId) => {
        MAX(CASE WHEN a."Punch" = 'Check OUT' THEN a."Address" END)       AS "punchOutAddress",
        MAX(a."PunchDatetime") AS "lastPunchTime",
        MAX(a."Punch")         AS "lastPunchStatus"
-     FROM "Attendance" a
-     INNER JOIN "AppUser" u ON u."fkEmpId"::text = a."EmpCode"::text
+     FROM "dbo.Attendance" a
+     INNER JOIN "dbo.AppUser" u ON u."fkEmpId"::text = a."EmpCode"::text
      WHERE a."AtDate" = CURRENT_DATE::text AND u."fkLocationId" = $1
      GROUP BY a."EmpCode", a."EmpName"`,
     [locationId]
@@ -260,8 +260,8 @@ const getTrackingAnalytics = async (q = {}) => {
 
   const officeWise = await query(`
     SELECT l."LocationID" AS "locationId", l."LocationName" AS "officeName", COUNT(u."fkEmpId") AS "assignedEmployees"
-    FROM "AttendanceLocations" l
-    LEFT JOIN "AppUser" u ON u."fkLocationId" = l."LocationID" AND u."fkEmpId" IS NOT NULL
+    FROM "dbo.AttendanceLocations" l
+    LEFT JOIN "dbo.AppUser" u ON u."fkLocationId" = l."LocationID" AND u."fkEmpId" IS NOT NULL
     WHERE l."IsActive" = true
     GROUP BY l."LocationID", l."LocationName"
     ORDER BY l."LocationName"
@@ -272,7 +272,7 @@ const getTrackingAnalytics = async (q = {}) => {
     `SELECT
        COUNT(DISTINCT CASE WHEN "Punch" = 'Check IN'  THEN "EmpCode" END) AS "checkedInToday",
        COUNT(DISTINCT CASE WHEN "Punch" = 'Check OUT' THEN "EmpCode" END) AS "checkedOutToday"
-     FROM "Attendance" WHERE "AtDate" = $1`,
+     FROM "dbo.Attendance" WHERE "AtDate" = $1`,
     [today]
   );
 

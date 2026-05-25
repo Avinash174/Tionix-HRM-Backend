@@ -6,17 +6,17 @@ const resolveFinalEmpCode = async (userId) => {
   let result;
   if (typeof userId === "string" && userId.startsWith("U")) {
     result = await query(
-      `SELECT "fkEmpId", "UserName" FROM "AppUser" WHERE "pkUserId" = $1`,
+      `SELECT "fkEmpId", "UserName" FROM "dbo.AppUser" WHERE "pkUserId" = $1`,
       [userId]
     );
   } else if (!isNaN(userId) && userId.toString().trim() !== "") {
     result = await query(
-      `SELECT "fkEmpId", "UserName" FROM "AppUser" WHERE "fkEmpId" = $1`,
+      `SELECT "fkEmpId", "UserName" FROM "dbo.AppUser" WHERE "fkEmpId" = $1`,
       [parseFloat(userId)]
     );
   } else {
     result = await query(
-      `SELECT "fkEmpId", "UserName" FROM "AppUser" WHERE "pkUserId" = $1`,
+      `SELECT "fkEmpId", "UserName" FROM "dbo.AppUser" WHERE "pkUserId" = $1`,
       [userId.toString()]
     );
   }

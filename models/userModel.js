@@ -6,7 +6,7 @@ const User = {
     const trimmedPass = (password || "").trim();
 
     const result = await query(
-      `SELECT * FROM "AppUser"
+      `SELECT * FROM "dbo.AppUser"
        WHERE TRIM("UserName") = $1
          AND TRIM("Password") = $2
          AND "fkEmpId" IS NOT NULL
@@ -21,13 +21,13 @@ const User = {
     const trimmedPass = (password || "").trim();
 
     const result = await query(
-      `SELECT * FROM "AppUser"
+      `SELECT * FROM "dbo.AppUser"
        WHERE TRIM("UserName") = $1
          AND TRIM("Password") = $2
          AND (
            "fkEmpId" IS NOT NULL
-           OR "SysDefined" = true
-           OR ("fkECId" = 1 AND "fkEmpId" IS NULL)
+           OR COALESCE("SysDefined"::int, 0) = 1
+           OR (COALESCE(NULLIF(TRIM("fkECId"::text), '')::int, 0) = 1 AND "fkEmpId" IS NULL)
          )
        LIMIT 1`,
       [trimmedUser, trimmedPass]
@@ -45,7 +45,7 @@ const User = {
 
   findSessionByRefreshToken: async (refreshToken) => {
     const result = await query(
-      `SELECT * FROM "UserSessions" WHERE "RefreshToken" = $1`,
+      `SELECT * FROM "dbo.UserSessions" WHERE "RefreshToken" = $1`,
       [refreshToken]
     );
     return result.rows[0];
@@ -53,7 +53,7 @@ const User = {
 
   createSession: async (userId, refreshToken) => {
     await query(
-      `INSERT INTO "UserSessions" ("UserID", "RefreshToken", "ExpiresAt")
+      `INSERT INTO "dbo.UserSessions" ("UserID", "RefreshToken", "ExpiresAt")
        VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
       [userId, refreshToken]
     );
@@ -61,7 +61,7 @@ const User = {
 
   deleteSession: async (refreshToken) => {
     await query(
-      `DELETE FROM "UserSessions" WHERE "RefreshToken" = $1`,
+      `DELETE FROM "dbo.UserSessions" WHERE "RefreshToken" = $1`,
       [refreshToken]
     );
   },
@@ -69,7 +69,7 @@ const User = {
   findByPkUserId: async (pkUserId) => {
     const result = await query(
       `SELECT "pkUserId", "UserName", "fkEmpId", "fkLocationId", "AttendanceMode", "GeofencePoint"
-       FROM "AppUser"
+       FROM "dbo.AppUser"
        WHERE "pkUserId" = $1`,
       [pkUserId]
     );
@@ -79,7 +79,7 @@ const User = {
   findByPkUserIdCore: async (pkUserId) => {
     const result = await query(
       `SELECT "pkUserId", "UserName", "fkEmpId", "AttendanceMode", "GeofencePoint"
-       FROM "AppUser"
+       FROM "dbo.AppUser"
        WHERE "pkUserId" = $1
        LIMIT 1`,
       [pkUserId]
@@ -89,7 +89,7 @@ const User = {
 
   updateProfile: async (pkUserId, patch) => {
     const row = await query(
-      `SELECT "pkUserId", "UserName", "Email", "Phone" FROM "AppUser" WHERE "pkUserId" = $1`,
+      `SELECT "pkUserId", "UserName", "Email", "Phone" FROM "dbo.AppUser" WHERE "pkUserId" = $1`,
       [pkUserId]
     );
     const u = row.rows[0];
@@ -100,7 +100,7 @@ const User = {
     const nextPhone = patch.phone ?? u.Phone;
 
     await query(
-      `UPDATE "AppUser" SET "UserName" = $1, "Email" = $2, "Phone" = $3 WHERE "pkUserId" = $4`,
+      `UPDATE "dbo.AppUser" SET "UserName" = $1, "Email" = $2, "Phone" = $3 WHERE "pkUserId" = $4`,
       [nextUserName, nextEmail, nextPhone, pkUserId]
     );
     return User.findByPkUserId(pkUserId);
@@ -110,7 +110,7 @@ const User = {
     if (isNaN(empId)) return null;
 
     const row = await query(
-      `SELECT "pkUserId", "UserName", "Email", "Phone", "fkEmpId" FROM "AppUser" WHERE "fkEmpId" = $1`,
+      `SELECT "pkUserId", "UserName", "Email", "Phone", "fkEmpId" FROM "dbo.AppUser" WHERE "fkEmpId" = $1`,
       [parseFloat(empId)]
     );
     const u = row.rows[0];
@@ -121,7 +121,7 @@ const User = {
     const nextPhone = patch.phone ?? u.Phone;
 
     await query(
-      `UPDATE "AppUser" SET "UserName" = $1, "Email" = $2, "Phone" = $3 WHERE "fkEmpId" = $4`,
+      `UPDATE "dbo.AppUser" SET "UserName" = $1, "Email" = $2, "Phone" = $3 WHERE "fkEmpId" = $4`,
       [nextUserName, nextEmail, nextPhone, parseFloat(empId)]
     );
     return User.findByEmpId(empId);
@@ -129,7 +129,7 @@ const User = {
 
   updateProfileImage: async (pkUserId, imagePath) => {
     await query(
-      `UPDATE "AppUser" SET "ProfileImage" = $1 WHERE "pkUserId" = $2`,
+      `UPDATE "dbo.AppUser" SET "ProfileImage" = $1 WHERE "pkUserId" = $2`,
       [imagePath, pkUserId]
     );
     return User.findByPkUserId(pkUserId);
@@ -141,7 +141,7 @@ const User = {
     const result = await query(
       `SELECT "pkUserId", "UserName", "fkEmpId", "fkLocationId", "AttendanceMode",
               "GeofencePoint", "Email", "Phone", "ProfileImage"
-       FROM "AppUser"
+       FROM "dbo.AppUser"
        WHERE "fkEmpId" = $1`,
       [parseFloat(empId)]
     );
