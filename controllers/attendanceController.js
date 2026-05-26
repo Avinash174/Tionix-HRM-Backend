@@ -29,6 +29,7 @@ const {
   validatePunchAgainstOffice,
 } = require("../utils/employeeOffice");
 const { resolveFinalEmpCode: resolveEmployeeIdentity, normalizeEmpCode } = require("../utils/resolveEmpCode");
+const { normalizeGpsReading } = require("../utils/gpsCoordinates");
 const dotenv = require("dotenv");
 dotenv.config();
 
@@ -141,12 +142,13 @@ const resolveAttendanceLocation = async (
 
 const punch_in = async (req, res) => {
     try {
-        const { latitude, longitude, remark } = req.body || {};
+        const { latitude, longitude, accuracy, remark } = req.body || {};
 
         const result = await marketingService.punchIn({
             userId: getMarketingUserId(req),
             latitude,
             longitude,
+            accuracy,
             remark,
             userAgent: req.headers["user-agent"] || null,
             userIp: req.headers["x-forwarded-for"] || req.ip || null,
@@ -232,6 +234,7 @@ const markAttendance = async (req, res) => {
 
     const rawLat = getCoord(req.body, ["latitude", "Latitude", "LAT", "lat", "employee_latitude"]);
     const rawLon = getCoord(req.body, ["longitude", "Longitude", "LON", "lon", "employee_longitude"]);
+    const rawAccuracy = getCoord(req.body, ["accuracy", "Accuracy", "gps_accuracy"]);
 
     try {
         if (!finalEmpCode || !finalStatus) {
@@ -251,17 +254,29 @@ const markAttendance = async (req, res) => {
         }
 
         console.log(`Processing: ${finalStatus} for Employee: ${finalEmpCode}`);
-        
-        // Ensure coordinates are numbers for distance calculation
-        const numLat = parseFloat(rawLat);
-        const numLon = parseFloat(rawLon);
 
-        if (isNaN(numLat) || isNaN(numLon)) {
-            return res.status(400).json({
+        const previousPoint = await liveLocationModel
+            .getLatestByEmployee(finalEmpCode)
+            .catch(() => null);
+
+        const normalized = normalizeGpsReading(
+            { latitude: rawLat, longitude: rawLon, accuracy: rawAccuracy },
+            previousPoint,
+            { allowLowAccuracy: finalStatus === "Check OUT" }
+        );
+
+        if (normalized.rejected) {
+            return res.status(
+                normalized.rejectCode === "GPS_ACCURACY_TOO_LOW" ? 422 : 400
+            ).json({
                 success: false,
-                message: "Latitude and Longitude must be valid numbers"
+                message: normalized.rejectReason,
+                code: normalized.rejectCode,
             });
         }
+
+        const numLat = normalized.latitude;
+        const numLon = normalized.longitude;
 
         // --- Dynamic Location Resolution ---
         const locationData = await resolveAttendanceLocation(finalEmpCode, numLat, numLon, {
@@ -375,6 +390,13 @@ const markAttendance = async (req, res) => {
             distance: `${locationData.distance.toFixed(2)}m`,
             data: locationData,
             shift: buildShiftStatusPayload(shiftTiming, shiftCheck),
+            gps: {
+                latitude: numLat,
+                longitude: numLon,
+                accuracyMeters: normalized.accuracyMeters,
+                corrections: normalized.corrections,
+                smoothed: normalized.smoothed,
+            },
         });
     } catch (err) {
         console.error("Attendance Error:", err);

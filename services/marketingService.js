@@ -30,7 +30,7 @@ const getAttendanceLogByDate = async (userId, attendanceDate) => {
   return result.rows[0] || null;
 };
 
-exports.punchIn = async ({ userId, latitude, longitude, remark, userAgent, userIp }) => {
+exports.punchIn = async ({ userId, latitude, longitude, accuracy, remark, userAgent, userIp }) => {
   ensureMarketingUserId(userId);
 
   const user = await User.findByPkUserIdCore(userId);
@@ -38,8 +38,18 @@ exports.punchIn = async ({ userId, latitude, longitude, remark, userAgent, userI
     throw new MarketingApiError("User account not found. Please login again.", 401, "USER_NOT_FOUND");
   }
 
-  const parsedLatitude = normalizeNumber(latitude, "Latitude");
-  const parsedLongitude = normalizeNumber(longitude, "Longitude");
+  const { normalizeGpsReading } = require("../utils/gpsCoordinates");
+  const normalized = normalizeGpsReading({ latitude, longitude, accuracy });
+  if (normalized.rejected) {
+    throw new MarketingApiError(
+      normalized.rejectReason,
+      normalized.rejectCode === "GPS_ACCURACY_TOO_LOW" ? 422 : 400,
+      normalized.rejectCode
+    );
+  }
+
+  const parsedLatitude = normalized.latitude;
+  const parsedLongitude = normalized.longitude;
   const openAttendance = await getOpenAttendanceLog(userId);
 
   if (openAttendance) {

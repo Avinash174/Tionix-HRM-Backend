@@ -6,6 +6,7 @@ const { getFixedOfficeForEmpId, getDefaultAttendanceRadius } = require("../utils
 const { calculateDistance } = require("../utils/locationUtils");
 const { emitEvent, emitToOffice } = require("../sockets");
 const { analyzeGpsPoint } = require("../utils/fakeGpsDetection");
+const { normalizeGpsReading, getGpsAccuracyConfig } = require("../utils/gpsCoordinates");
 const {
   computeLastSeen,
   computeOfficeStatus,
@@ -46,6 +47,7 @@ const getTrackingConfig = () => ({
     enabled: process.env.FAKE_GPS_DETECTION_ENABLED !== "false",
     maxSpeedMs: parseFloat(process.env.MAX_GPS_SPEED_MS || "55"),
   },
+  gpsAccuracy: getGpsAccuracyConfig(),
 });
 
 const getEmployeeOffice = async (empCode) => {
@@ -83,23 +85,45 @@ const recordLocation = async (userId, payload = {}) => {
     throw error;
   }
 
-  const latitude = Number(
-    payload.latitude ?? payload.employee_latitude ?? payload.lat ?? payload.employeeLatitude
-  );
-  const longitude = Number(
-    payload.longitude ?? payload.employee_longitude ?? payload.lng ?? payload.employeeLongitude
+  const previousPoint = await liveLocationModel.getLatestByEmployee(resolved.empCode);
+  const normalized = normalizeGpsReading(
+    {
+      latitude:
+        payload.latitude ??
+        payload.employee_latitude ??
+        payload.lat ??
+        payload.employeeLatitude,
+      longitude:
+        payload.longitude ??
+        payload.employee_longitude ??
+        payload.lng ??
+        payload.employeeLongitude,
+      accuracy: payload.accuracy,
+    },
+    previousPoint
   );
 
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    const error = new Error("Valid latitude and longitude are required");
-    error.statusCode = 400;
+  if (normalized.rejected) {
+    const error = new Error(normalized.rejectReason);
+    error.statusCode = normalized.rejectCode === "GPS_ACCURACY_TOO_LOW" ? 422 : 400;
+    error.code = normalized.rejectCode;
     throw error;
   }
 
-  const previousPoint = await liveLocationModel.getLatestByEmployee(resolved.empCode);
+  const latitude = normalized.latitude;
+  const longitude = normalized.longitude;
+  const accuracyMeters = normalized.accuracyMeters;
+
+  const gpsPayload = {
+    ...payload,
+    latitude,
+    longitude,
+    accuracy: accuracyMeters,
+  };
+
   const gpsAnalysis =
     process.env.FAKE_GPS_DETECTION_ENABLED !== "false"
-      ? analyzeGpsPoint(payload, previousPoint)
+      ? analyzeGpsPoint(gpsPayload, previousPoint)
       : { isSuspicious: false, riskScore: 0, flags: [], status: "trusted" };
 
   const inserted = await liveLocationModel.insertLocation({
@@ -107,7 +131,7 @@ const recordLocation = async (userId, payload = {}) => {
     empName: resolved.empName,
     latitude,
     longitude,
-    accuracyMeters: payload.accuracy != null ? Number(payload.accuracy) : null,
+    accuracyMeters,
     heading: payload.heading != null ? Number(payload.heading) : null,
     speed: payload.speed != null ? Number(payload.speed) : null,
     address: payload.address || null,
@@ -176,7 +200,7 @@ const recordLocation = async (userId, payload = {}) => {
     empName: resolved.empName,
     latitude,
     longitude,
-    accuracyMeters: payload.accuracy != null ? Number(payload.accuracy) : null,
+    accuracyMeters,
     heading: payload.heading != null ? Number(payload.heading) : null,
     speed: payload.speed != null ? Number(payload.speed) : null,
     address: payload.address || null,
@@ -199,6 +223,8 @@ const recordLocation = async (userId, payload = {}) => {
     isSuspiciousGps: gpsAnalysis.isSuspicious,
     gpsRiskScore: gpsAnalysis.riskScore,
     gpsFlags: gpsAnalysis.flags,
+    gpsCorrections: normalized.corrections,
+    gpsSmoothed: normalized.smoothed,
   };
 
   emitEvent("employee-live-location", point);

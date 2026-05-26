@@ -77,6 +77,7 @@ const postLiveLocation = async (req, res) => {
     return res.status(err.statusCode || 500).json({
       success: false,
       message: err.message || "Failed to record location",
+      code: err.code || undefined,
     });
   }
 };
