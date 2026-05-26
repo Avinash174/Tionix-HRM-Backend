@@ -39,10 +39,25 @@ const fetchAppUserByPk = async (pkUserId) => {
 };
 
 const fetchAppUserByEmpId = async (fkEmpId) => {
+  const empCode = fkEmpId == null ? "" : String(fkEmpId).trim();
+  if (!empCode) return null;
+
   const result = await query(
     `SELECT "pkUserId", "UserName", "fkEmpId", "fkLocationId", "GeofencePoint", "AttendanceMode"
-     FROM "dbo.AppUser" WHERE "fkEmpId" = $1 ORDER BY "pkUserId" LIMIT 1`,
-    [Number(fkEmpId)]
+     FROM "dbo.AppUser" WHERE TRIM("fkEmpId"::text) = $1 ORDER BY "pkUserId" LIMIT 1`,
+    [empCode]
+  );
+  return result.rows[0] || null;
+};
+
+const fetchAppUserByUserName = async (userName) => {
+  const result = await query(
+    `SELECT "pkUserId", "UserName", "fkEmpId", "fkLocationId", "GeofencePoint", "AttendanceMode"
+     FROM "dbo.AppUser"
+     WHERE LOWER(TRIM("UserName")) = LOWER($1)
+     ORDER BY "pkUserId"
+     LIMIT 1`,
+    [String(userName || "").trim()]
   );
   return result.rows[0] || null;
 };
@@ -66,17 +81,26 @@ const getFixedOfficeForEmpId = async (fkEmpId) => {
 };
 
 const resolveFkEmpIdFromUserId = async (userId) => {
-  if (typeof userId === "string" && userId.startsWith("U")) {
-    const appUser = await fetchAppUserByPk(userId);
-    return appUser?.fkEmpId ?? null;
+  if (userId == null || userId === "") return null;
+
+  const raw = String(userId).trim();
+  if (/^\d+$/.test(raw)) {
+    const byEmp = await fetchAppUserByEmpId(raw);
+    return byEmp?.fkEmpId != null ? String(byEmp.fkEmpId).trim() : raw;
   }
 
-  if (Number.isFinite(Number(userId))) {
-    return Number(userId);
+  const byPk = await fetchAppUserByPk(raw);
+  if (byPk?.fkEmpId != null && String(byPk.fkEmpId).trim() !== "") {
+    return String(byPk.fkEmpId).trim();
+  }
+  if (byPk) return null;
+
+  const byName = await fetchAppUserByUserName(raw);
+  if (byName?.fkEmpId != null && String(byName.fkEmpId).trim() !== "") {
+    return String(byName.fkEmpId).trim();
   }
 
-  const appUser = await fetchAppUserByPk(userId?.toString());
-  return appUser?.fkEmpId ?? null;
+  return null;
 };
 
 const getAssignedOfficeForUser = async (pkUserId) => {

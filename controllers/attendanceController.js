@@ -28,7 +28,7 @@ const {
   resolveAttendanceLocationForEmployee,
   validatePunchAgainstOffice,
 } = require("../utils/employeeOffice");
-const { resolveFinalEmpCode: resolveEmployeeIdentity } = require("../utils/resolveEmpCode");
+const { resolveFinalEmpCode: resolveEmployeeIdentity, normalizeEmpCode } = require("../utils/resolveEmpCode");
 const dotenv = require("dotenv");
 dotenv.config();
 
@@ -180,24 +180,46 @@ const markAttendance = async (req, res) => {
 
     let userId = req.user ? req.user.id : (empCode || EmpCode);
     let finalEmpCode = null;
-    let empName = req.user ? req.user.username : 'Employee';
+    let empName = req.user ? req.user.username : "Employee";
     const finalStatus = status || Status || punch;
-    
+
+    if (req.user?.role === "admin") {
+        return res.status(403).json({
+            success: false,
+            message: "This API is for employees only. Login with an employee account (e.g. Banti), not ADMIN.",
+            code: "EMPLOYEE_NOT_FOUND",
+            hint: "Use POST /api/login with employee username/password, then punch in.",
+        });
+    }
+
     // Resolve UserId to EmpCode
     if (userId) {
         try {
             const resolved = await resolveEmployeeIdentity(userId);
-            if (resolved && resolved.empCode != null) {
-                finalEmpCode = resolved.empCode;
-                if (!req.user) empName = resolved.empName || empName;
-            } else {
-                finalEmpCode = userId;
-            }
+            finalEmpCode = resolved?.empCode ?? null;
+            if (resolved?.empName) empName = resolved.empName;
         } catch (err) {
             console.error("Error resolving EmpCode:", err);
-            finalEmpCode = userId;
         }
     }
+
+    const bodyEmpCode = normalizeEmpCode(empCode || EmpCode);
+    if ((!finalEmpCode || !Number.isFinite(Number(finalEmpCode))) && bodyEmpCode) {
+        finalEmpCode = bodyEmpCode;
+    }
+
+    if (!finalEmpCode || !Number.isFinite(Number(finalEmpCode))) {
+        return res.status(403).json({
+            success: false,
+            message: "Employee ID not found for attendance geofence",
+            error: "Employee ID not found for attendance geofence",
+            code: "EMPLOYEE_NOT_FOUND",
+            hint: "Login with an employee account linked to SalEmployee (fkEmpId). ADMIN accounts cannot punch in.",
+            userId: userId || null,
+        });
+    }
+
+    finalEmpCode = String(finalEmpCode).trim();
     
     // Smart coordinate detection (handles latitude, Latitude, LATITUDE, etc.)
     const getCoord = (obj, keys) => {
