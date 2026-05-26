@@ -36,18 +36,6 @@ const isDirectSupabaseUrl = (url) =>
   typeof url === "string" &&
   /@db\.[a-z0-9]+\.supabase\.co/i.test(url);
 
-if (
-  isCloudHost() &&
-  !useMysql &&
-  connectionString &&
-  isDirectSupabaseUrl(connectionString)
-) {
-  console.warn(
-    "[db] DATABASE_URL uses direct Supabase host (IPv6). " +
-      "On Render, use Session pooler URI from Supabase → Connect → Session mode."
-  );
-}
-
 const validateDatabaseConfig = () => {
   if (useMysql) {
     const host = process.env.MYSQL_HOST || "127.0.0.1";
@@ -73,7 +61,14 @@ const validateDatabaseConfig = () => {
   ) {
     throw new Error(
       "DATABASE_URL points to localhost — Render cannot reach your Mac. " +
-        "Use Supabase: postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres"
+        "Use Supabase Session pooler URI (see Supabase Dashboard → Connect)."
+    );
+  }
+  if (isCloudHost() && isDirectSupabaseUrl(connectionString)) {
+    throw new Error(
+      "DATABASE_URL uses direct host db.*.supabase.co (IPv6 only). " +
+        "Render cannot connect. In Supabase → Connect → Session mode, copy the pooler URI " +
+        "(host aws-0-REGION.pooler.supabase.com, user postgres.YOUR_PROJECT_REF)."
     );
   }
 };

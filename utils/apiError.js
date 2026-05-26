@@ -5,14 +5,31 @@ const cloudDbHint = (err) => {
   if (err?.code === "ENETUNREACH" || String(err?.address || "").includes(":")) {
     return (
       "Supabase direct URL uses IPv6 — Render cannot reach it. " +
-      "In Supabase Dashboard → Connect → Session pooler (port 5432), " +
-      "copy that URI into Render DATABASE_URL (host: aws-0-REGION.pooler.supabase.com)."
+      "Supabase → Connect → Session mode → copy pooler URI into Render DATABASE_URL " +
+      "(host must be aws-0-REGION.pooler.supabase.com, user postgres.PROJECT_REF)."
+    );
+  }
+  if (err?.code === "ECONNREFUSED") {
+    if (!process.env.DATABASE_URL) {
+      return (
+        "DATABASE_URL is not set on Render. Add Supabase Session pooler URI in " +
+        "Render → Environment → DATABASE_URL (not empty)."
+      );
+    }
+    if ((process.env.DB_DRIVER || "").toLowerCase() === "mysql") {
+      return (
+        "DB_DRIVER=mysql connects to localhost on Render. Set DB_DRIVER=postgres " +
+        "and DATABASE_URL to Supabase Session pooler URI."
+      );
+    }
+    return (
+      "Database connection refused. On Render use Supabase Session pooler URI " +
+      "(pooler.supabase.com), not db.xxx.supabase.co direct URL."
     );
   }
   return (
-    "Database unreachable from cloud (Render/Railway/Vercel). " +
-    "Set DATABASE_URL to Supabase Session pooler URI (not db.xxx.supabase.co direct). " +
-    "Use DB_DRIVER=postgres and remove MYSQL_HOST=127.0.0.1 on Render."
+    "Database unreachable from cloud (Render). Set DATABASE_URL to Supabase " +
+    "Session pooler URI. DB_DRIVER=postgres. Remove MYSQL_* variables."
   );
 };
 
