@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 const adminAuthService = require("../admin/services/authService");
 const { resolveLoginIdentifier } = require("../utils/loginIdentifier");
+const { sanitizeUserForResponse } = require("../utils/sanitizeUser");
 const { errorResponse } = require("../utils/apiError");
 
 const login = async (req, res) => {
@@ -46,7 +47,7 @@ const login = async (req, res) => {
           sessionId: session.sessionId,
           expiresIn: session.expiresIn,
           role: "admin",
-          user,
+          user: sanitizeUserForResponse(user),
           admin: {
             id: userId,
             username: user.UserName,
@@ -75,7 +76,7 @@ const login = async (req, res) => {
         token,
         refreshToken,
         role,
-        user,
+        user: sanitizeUserForResponse(user),
       });
     } else {
       console.log(`Login failed for: ${loginIdentifier}`);
