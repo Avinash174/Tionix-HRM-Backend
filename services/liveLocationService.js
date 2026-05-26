@@ -140,6 +140,8 @@ const recordLocation = async (userId, payload = {}) => {
     latitude,
     longitude,
     atDate: inserted.recorded_at || new Date(),
+  }).catch((err) => {
+    console.warn("EmpGeoLocation insert skipped:", err.message);
   });
 
   if (office) {
