@@ -1,36 +1,53 @@
 const { query } = require("../config/db");
 const { sessionExpiresAt, adminSysDefinedOr } = require("../config/dialect");
+const { getPhoneDigits } = require("../utils/loginIdentifier");
+
+const loginMatchClause = `
+  (
+    LOWER(TRIM("UserName")) = LOWER($1)
+    OR LOWER(TRIM(COALESCE("Email", ''))) = LOWER($1)
+    OR (
+      $3::text IS NOT NULL
+      AND (
+        regexp_replace(COALESCE("Phone"::text, ''), '[^0-9]', '', 'g') = $3
+        OR regexp_replace(COALESCE("Mobile"::text, ''), '[^0-9]', '', 'g') = $3
+      )
+    )
+  )
+`;
 
 const User = {
-  findByCredentials: async (username, password) => {
-    const trimmedUser = (username || "").trim();
+  findByCredentials: async (loginIdentifier, password) => {
+    const identifier = (loginIdentifier || "").trim();
     const trimmedPass = (password || "").trim();
+    const phoneDigits = getPhoneDigits(identifier);
 
     const result = await query(
       `SELECT * FROM "dbo.AppUser"
-       WHERE LOWER(TRIM("UserName")) = LOWER($1)
-         AND TRIM("Password") = $2
+       WHERE TRIM("Password") = $2
+         AND ${loginMatchClause}
          AND "fkEmpId" IS NOT NULL
        LIMIT 1`,
-      [trimmedUser, trimmedPass]
+      [identifier, trimmedPass, phoneDigits]
     );
     return result.rows[0];
   },
 
-  findByLoginCredentials: async (username, password) => {
-    const trimmedUser = (username || "").trim();
+  findByLoginCredentials: async (loginIdentifier, password) => {
+    const identifier = (loginIdentifier || "").trim();
     const trimmedPass = (password || "").trim();
+    const phoneDigits = getPhoneDigits(identifier);
 
     const result = await query(
       `SELECT * FROM "dbo.AppUser"
-       WHERE LOWER(TRIM("UserName")) = LOWER($1)
-         AND TRIM("Password") = $2
+       WHERE TRIM("Password") = $2
+         AND ${loginMatchClause}
          AND (
            "fkEmpId" IS NOT NULL
            ${adminSysDefinedOr()}
          )
        LIMIT 1`,
-      [trimmedUser, trimmedPass]
+      [identifier, trimmedPass, phoneDigits]
     );
     const user = result.rows[0];
     if (!user) return null;

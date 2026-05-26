@@ -1,18 +1,22 @@
 const authService = require("../services/authService");
+const { resolveLoginIdentifier } = require("../../utils/loginIdentifier");
 
 const login = async (req, res, next) => {
   try {
-    const username = (req.body.username || req.body.UserName || "").trim();
+    const loginIdentifier = resolveLoginIdentifier(req.body);
     const password = (req.body.password || req.body.Password || "").trim();
     const deviceInfo = req.body.device_info || req.body.deviceInfo || null;
 
-    if (!username || !password) {
-      return res.status(400).json({ success: false, message: "Username and password are required" });
+    if (!loginIdentifier || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Username, email, or mobile and password are required",
+      });
     }
 
-    console.log(`Admin login attempt: ${username}`);
+    console.log(`Admin login attempt: ${loginIdentifier}`);
     const { admin, token, refreshToken, sessionId, expiresIn } = await authService.loginAdmin(
-      username,
+      loginIdentifier,
       password,
       deviceInfo
     );
@@ -31,7 +35,7 @@ const login = async (req, res, next) => {
       },
     });
   } catch (err) {
-    console.log(`Admin login failed: ${req.body?.username || "unknown"}`);
+    console.log(`Admin login failed: ${resolveLoginIdentifier(req.body) || "unknown"}`);
     return next(err);
   }
 };

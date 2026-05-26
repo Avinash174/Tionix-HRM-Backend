@@ -1,18 +1,34 @@
 const { query } = require("../../config/db");
 const adminSessionService = require("./adminSessionService");
+const { getPhoneDigits } = require("../../utils/loginIdentifier");
 
-const loginAdmin = async (username, password, deviceInfo = null) => {
-  const trimmedUser = (username || "").trim();
+const loginMatchClause = `
+  (
+    LOWER(TRIM("UserName")) = LOWER($1)
+    OR LOWER(TRIM(COALESCE("Email", ''))) = LOWER($1)
+    OR (
+      $3::text IS NOT NULL
+      AND (
+        regexp_replace(COALESCE("Phone"::text, ''), '[^0-9]', '', 'g') = $3
+        OR regexp_replace(COALESCE("Mobile"::text, ''), '[^0-9]', '', 'g') = $3
+      )
+    )
+  )
+`;
+
+const loginAdmin = async (loginIdentifier, password, deviceInfo = null) => {
+  const identifier = (loginIdentifier || "").trim();
   const trimmedPass = (password || "").trim();
+  const phoneDigits = getPhoneDigits(identifier);
 
   const result = await query(
     `SELECT "pkUserId", "UserName", "fkECId", "SysDefined", "fkEmpId"
      FROM "dbo.AppUser"
-     WHERE LOWER(TRIM("UserName")) = LOWER($1)
-       AND TRIM("Password") = $2
+     WHERE TRIM("Password") = $2
+       AND ${loginMatchClause}
        AND COALESCE("SysDefined"::int, 0) = 1
      LIMIT 1`,
-    [trimmedUser, trimmedPass]
+    [identifier, trimmedPass, phoneDigits]
   );
 
   const admin = result.rows[0];

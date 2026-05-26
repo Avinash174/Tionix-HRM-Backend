@@ -1,25 +1,30 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 const adminAuthService = require("../admin/services/authService");
+const { resolveLoginIdentifier } = require("../utils/loginIdentifier");
 const { errorResponse } = require("../utils/apiError");
 
 const login = async (req, res) => {
   try {
-    const username = (req.body.username || req.body.UserName || "").trim();
+    const loginIdentifier = resolveLoginIdentifier(req.body);
     const password = (req.body.password || req.body.Password || "").trim();
     const { device_info } = req.body;
 
-    if (!username || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({
         success: false,
-        message: "Username and Password are required",
+        message: "Username, email, or mobile and password are required",
+        acceptedFields: {
+          login: "username | email | mobile (any one)",
+          password: "required",
+        },
       });
     }
 
-    console.log(`Login attempt for user: ${username} (Device: ${device_info || 'Unknown'})`);
+    console.log(`Login attempt for: ${loginIdentifier} (Device: ${device_info || 'Unknown'})`);
 
     // Employees (fkEmpId) + admins (SysDefined) — admin panel often uses POST /api/login
-    const loginResult = await User.findByLoginCredentials(username, password);
+    const loginResult = await User.findByLoginCredentials(loginIdentifier, password);
 
     if (loginResult) {
       const { user, role } = loginResult;
@@ -27,7 +32,7 @@ const login = async (req, res) => {
 
       if (role === "admin") {
         const session = await adminAuthService.loginAdmin(
-          username,
+          loginIdentifier,
           password,
           device_info || null
         );
@@ -73,7 +78,7 @@ const login = async (req, res) => {
         user,
       });
     } else {
-      console.log(`Login failed for user: ${username}`);
+      console.log(`Login failed for: ${loginIdentifier}`);
       res.status(401).json({
         success: false,
         message: "Login Failed, Please try again",
