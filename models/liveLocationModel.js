@@ -1,5 +1,6 @@
 const { query, pool } = require("../config/db");
 const { createLiveLocationTableSql, isMysql, joinUserToLocation, filterUserLocationId } = require("../config/dialect");
+const { getFixedOfficeByLocationId } = require("../config/officeGeofences");
 
 let tableReady = false;
 
