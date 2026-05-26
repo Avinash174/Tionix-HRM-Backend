@@ -25,10 +25,17 @@ const computeLastSeen = (recordedAt) => {
   return { lastSeenAt, lastSeenSecondsAgo, lastSeenLabel };
 };
 
-const computeOfficeStatus = (latitude, longitude, office) => {
+const getLiveGpsBufferMeters = () => {
+  const n = Number(process.env.GPS_LIVE_DEFAULT_BUFFER_METERS || "50");
+  return Number.isFinite(n) && n >= 0 ? n : 50;
+};
+
+const computeOfficeStatus = (latitude, longitude, office, options = {}) => {
   if (!office || latitude == null || longitude == null) {
     return {
       distanceFromOfficeMeters: null,
+      rawDistanceFromOfficeMeters: null,
+      effectiveDistanceFromOfficeMeters: null,
       isInsideOfficeRadius: null,
       officeRadiusMeters: office?.AllowedRadius ?? office?.allowedRadius ?? null,
       geofenceStatus: "unknown",
@@ -37,24 +44,48 @@ const computeOfficeStatus = (latitude, longitude, office) => {
 
   const officeLat = Number(office.Latitude ?? office.latitude);
   const officeLng = Number(office.Longitude ?? office.longitude);
-  const radius = Number(office.AllowedRadius ?? office.allowedRadius ?? 25);
+  const radius = Number(office.AllowedRadius ?? office.allowedRadius ?? office.allowed_radius ?? 25);
 
   if (!Number.isFinite(officeLat) || !Number.isFinite(officeLng)) {
     return {
       distanceFromOfficeMeters: null,
+      rawDistanceFromOfficeMeters: null,
+      effectiveDistanceFromOfficeMeters: null,
       isInsideOfficeRadius: null,
       officeRadiusMeters: Number.isFinite(radius) ? radius : null,
       geofenceStatus: "unknown",
     };
   }
 
-  const distanceFromOfficeMeters = Math.round(
+  const rawDistanceFromOfficeMeters = Math.round(
     calculateDistance(latitude, longitude, officeLat, officeLng)
   );
-  const isInsideOfficeRadius = distanceFromOfficeMeters <= radius;
+
+  const accuracyMeters =
+    options.accuracyMeters != null && Number.isFinite(Number(options.accuracyMeters))
+      ? Number(options.accuracyMeters)
+      : null;
+
+  const accuracyBufferMeters =
+    options.accuracyBufferMeters != null && Number.isFinite(Number(options.accuracyBufferMeters))
+      ? Number(options.accuracyBufferMeters)
+      : accuracyMeters != null
+        ? accuracyMeters
+        : options.applyLiveGpsBuffer
+          ? getLiveGpsBufferMeters()
+          : 0;
+
+  const effectiveDistanceFromOfficeMeters = Math.max(
+    0,
+    rawDistanceFromOfficeMeters - Math.round(accuracyBufferMeters)
+  );
+  const isInsideOfficeRadius = effectiveDistanceFromOfficeMeters <= radius;
 
   return {
-    distanceFromOfficeMeters,
+    distanceFromOfficeMeters: effectiveDistanceFromOfficeMeters,
+    rawDistanceFromOfficeMeters,
+    effectiveDistanceFromOfficeMeters,
+    accuracyBufferMeters: Math.round(accuracyBufferMeters),
     isInsideOfficeRadius,
     officeRadiusMeters: radius,
     geofenceStatus: isInsideOfficeRadius ? "inside" : "outside",
@@ -76,4 +107,5 @@ module.exports = {
   computeLastSeen,
   computeOfficeStatus,
   getShiftStatusForEmployee,
+  getLiveGpsBufferMeters,
 };

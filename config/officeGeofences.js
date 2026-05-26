@@ -28,8 +28,8 @@ const OFFICE_GEOFENCES = Object.freeze({
     locationId: 2,
     key: "TEXTO",
     name: "Texto Office",
-    latitude: 19.111448929845803,
-    longitude: 73.0154910366839,
+    latitude: 19.111025,
+    longitude: 73.015421,
   },
   3: {
     locationId: 3,
@@ -44,6 +44,13 @@ const getFixedOfficeByLocationId = (locationId) => {
   const entry = OFFICE_GEOFENCES[Number(locationId)];
   if (!entry) return null;
 
+  const envLat = process.env[`${entry.key}_OFFICE_LAT`];
+  const envLng = process.env[`${entry.key}_OFFICE_LNG`];
+  const latitude =
+    envLat != null && Number.isFinite(Number(envLat)) ? Number(envLat) : entry.latitude;
+  const longitude =
+    envLng != null && Number.isFinite(Number(envLng)) ? Number(envLng) : entry.longitude;
+
   const radius = getDefaultRadiusMeters();
   return {
     locationId: entry.locationId,
@@ -51,8 +58,8 @@ const getFixedOfficeByLocationId = (locationId) => {
     key: entry.key,
     name: entry.name,
     location_name: entry.name,
-    latitude: entry.latitude,
-    longitude: entry.longitude,
+    latitude,
+    longitude,
     radius,
     allowed_radius: radius,
     address: null,

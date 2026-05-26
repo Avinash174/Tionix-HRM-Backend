@@ -195,15 +195,39 @@ const getEmployeesByOffice = async (locationId) => {
 
 const getEmployeeOfficeMap = async () => {
   const result = await query(
-    `SELECT
-       u."fkEmpId", u."UserName", u."fkLocationId",
-       l."LocationID", l."LocationName", l."Latitude", l."Longitude",
-       l."AllowedRadius", l."Address"
+    `SELECT u."fkEmpId", u."UserName", u."fkLocationId"
      FROM "dbo.AppUser" u
-     LEFT JOIN "dbo.AttendanceLocations" l ON ${joinUserToLocation("u", "l")}
      WHERE u."fkEmpId" IS NOT NULL`
   );
-  return result.rows;
+
+  return result.rows.map((row) => {
+    const locationId = row.fkLocationId != null ? Number(row.fkLocationId) : null;
+    const fixed = locationId ? getFixedOfficeByLocationId(locationId) : null;
+    if (!fixed) {
+      return {
+        fkEmpId: row.fkEmpId,
+        UserName: row.UserName,
+        fkLocationId: row.fkLocationId,
+        LocationID: null,
+        LocationName: null,
+        Latitude: null,
+        Longitude: null,
+        AllowedRadius: null,
+        Address: null,
+      };
+    }
+    return {
+      fkEmpId: row.fkEmpId,
+      UserName: row.UserName,
+      fkLocationId: row.fkLocationId,
+      LocationID: fixed.locationId,
+      LocationName: fixed.name,
+      Latitude: fixed.latitude,
+      Longitude: fixed.longitude,
+      AllowedRadius: fixed.allowed_radius,
+      Address: fixed.address,
+    };
+  });
 };
 
 module.exports = {

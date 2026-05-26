@@ -173,16 +173,54 @@ const mapLiveDbRow = (row) => ({
 
 const enrichEmployeeForMap = (emp, selectedOffice) => {
   const lastSeen = computeLastSeen(emp.lastActiveAt || emp.lastPunchTime);
-  const officeStatus = computeOfficeStatus(emp.latitude, emp.longitude, selectedOffice);
+
+  const liveOfficeStatus = computeOfficeStatus(emp.latitude, emp.longitude, selectedOffice, {
+    accuracyMeters: emp.accuracyMeters,
+    applyLiveGpsBuffer: true,
+  });
+
+  let punchOfficeStatus = null;
+  const punchLoc = emp.punchInLocation;
+  if (punchLoc?.latitude != null && punchLoc?.longitude != null) {
+    punchOfficeStatus = computeOfficeStatus(
+      punchLoc.latitude,
+      punchLoc.longitude,
+      selectedOffice
+    );
+  }
+
+  const punchedInToday = !!emp.punchInTime;
+  const punchInside = punchOfficeStatus?.isInsideOfficeRadius === true;
+  const officeStatus =
+    punchedInToday && punchInside
+      ? {
+          ...punchOfficeStatus,
+          geofenceSource: "punch_in",
+          liveDistanceFromOfficeMeters: liveOfficeStatus.rawDistanceFromOfficeMeters,
+        }
+      : {
+          ...liveOfficeStatus,
+          geofenceSource: punchedInToday ? "live_gps" : "live_gps",
+          punchDistanceFromOfficeMeters: punchOfficeStatus?.rawDistanceFromOfficeMeters ?? null,
+        };
+
   return {
     empCode: emp.empCode, empName: emp.empName,
     latitude: emp.latitude, longitude: emp.longitude, address: emp.address || null,
     status: emp.status || "offline",
     lastActiveAt: emp.lastActiveAt || emp.lastPunchTime || null,
     punchInTime: emp.punchInTime || null, punchOutTime: emp.punchOutTime || null,
+    punchInLocation: emp.punchInLocation || null,
     source: emp.source || null, isStaleLocation: emp.isStaleLocation || false,
+    accuracyMeters: emp.accuracyMeters ?? null,
     ...lastSeen, ...officeStatus,
     distanceMeters: officeStatus.distanceFromOfficeMeters,
+    liveDistanceFromOfficeMeters:
+      officeStatus.liveDistanceFromOfficeMeters ?? liveOfficeStatus.rawDistanceFromOfficeMeters,
+    punchDistanceFromOfficeMeters:
+      officeStatus.punchDistanceFromOfficeMeters ??
+      punchOfficeStatus?.rawDistanceFromOfficeMeters ??
+      null,
     isInsideGeofence: officeStatus.isInsideOfficeRadius,
   };
 };

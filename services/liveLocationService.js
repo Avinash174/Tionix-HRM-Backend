@@ -145,7 +145,10 @@ const recordLocation = async (userId, payload = {}) => {
     resolved.empCode
   );
   const allowedRadius = office?.allowed_radius ?? getDefaultAttendanceRadius();
-  let officeStatus = computeOfficeStatus(latitude, longitude, toOfficeStatusInput(office));
+  let officeStatus = computeOfficeStatus(latitude, longitude, toOfficeStatusInput(office), {
+    accuracyMeters: accuracyMeters,
+    applyLiveGpsBuffer: false,
+  });
   let trackingValid = officeStatus.isInsideOfficeRadius === true;
   let attendanceStatus = "unknown";
 

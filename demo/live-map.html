@@ -140,13 +140,22 @@
     }
 
     function infoHtml(emp) {
+      const dist = emp.distanceFromOfficeMeters ?? '-';
+      const liveDist = emp.liveDistanceFromOfficeMeters;
+      const punchDist = emp.punchDistanceFromOfficeMeters;
+      let distLine = `Distance: ${dist} m`;
+      if (liveDist != null && punchDist != null && liveDist !== dist) {
+        distLine = `Distance: ${dist} m (punch)<br/>Live GPS: ${liveDist} m`;
+      } else if (liveDist != null && emp.geofenceSource === 'live_gps' && emp.accuracyBufferMeters) {
+        distLine = `Distance: ${dist} m (±${emp.accuracyBufferMeters}m GPS buffer)`;
+      }
       return `
         <div style="min-width:180px;font-family:system-ui,sans-serif">
           <strong>${emp.empName || emp.empCode}</strong><br/>
           Code: ${emp.empCode}<br/>
           Status: ${emp.status || 'online'}<br/>
           Office: ${emp.geofenceStatus || 'unknown'}<br/>
-          Distance: ${emp.distanceFromOfficeMeters ?? '-'} m<br/>
+          ${distLine}<br/>
           Speed: ${emp.speed != null ? Number(emp.speed).toFixed(1) + ' m/s' : '-'}<br/>
           Last seen: ${emp.lastSeenLabel || 'just now'}
         </div>
