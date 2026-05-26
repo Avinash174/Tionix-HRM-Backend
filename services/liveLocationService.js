@@ -162,6 +162,8 @@ const recordLocation = async (userId, payload = {}) => {
       ),
       allowedRadiusMeters: allowedRadius,
       attendanceStatus,
+    }).catch((err) => {
+      console.warn("gps_attendance_logs insert skipped:", err.message);
     });
   }
 

@@ -87,6 +87,42 @@ const createLiveLocationTableSql = () =>
       recorded_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW()
     )`;
 
+/** CREATE TABLE gps_attendance_logs */
+const createGpsAttendanceLogsTableSql = () =>
+  isMysql()
+    ? `
+    CREATE TABLE IF NOT EXISTS gps_attendance_logs (
+      id                    BIGINT AUTO_INCREMENT PRIMARY KEY,
+      employee_id           VARCHAR(50)    NOT NULL,
+      attendance_type       VARCHAR(20)    NOT NULL,
+      attendance_date       DATE           NOT NULL,
+      recorded_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      employee_latitude     DECIMAL(10,7)  NOT NULL,
+      employee_longitude    DECIMAL(10,7)  NOT NULL,
+      employee_address      TEXT           NULL,
+      office_latitude       DECIMAL(10,7)  NOT NULL,
+      office_longitude      DECIMAL(10,7)  NOT NULL,
+      distance_meters       DECIMAL(10,2)  NOT NULL,
+      allowed_radius_meters DECIMAL(10,2)  NOT NULL,
+      attendance_status     VARCHAR(20)    NOT NULL
+    )`
+    : `
+    CREATE TABLE IF NOT EXISTS gps_attendance_logs (
+      id                    BIGSERIAL PRIMARY KEY,
+      employee_id           VARCHAR(50)    NOT NULL,
+      attendance_type       VARCHAR(20)    NOT NULL,
+      attendance_date       DATE           NOT NULL,
+      recorded_at           TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+      employee_latitude     DECIMAL(10,7)  NOT NULL,
+      employee_longitude    DECIMAL(10,7)  NOT NULL,
+      employee_address      TEXT           NULL,
+      office_latitude       DECIMAL(10,7)  NOT NULL,
+      office_longitude      DECIMAL(10,7)  NOT NULL,
+      distance_meters       DECIMAL(10,2)  NOT NULL,
+      allowed_radius_meters DECIMAL(10,2)  NOT NULL,
+      attendance_status     VARCHAR(20)    NOT NULL
+    )`;
+
 /**
  * Adapt a Postgres-style query string for MySQL execution.
  * Call before converting $1 placeholders to ?.
@@ -154,6 +190,7 @@ module.exports = {
   adminSysDefinedOr,
   activeTrue,
   createLiveLocationTableSql,
+  createGpsAttendanceLogsTableSql,
   adaptSqlForMysql,
   toMysqlPlaceholders,
   joinUserToLocation,

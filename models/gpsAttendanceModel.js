@@ -1,9 +1,30 @@
 const { query } = require("../config/db");
+const { createGpsAttendanceLogsTableSql } = require("../config/dialect");
+
+let tableReady = false;
+
+const ensureGpsAttendanceLogsTable = async () => {
+  if (tableReady) return;
+
+  await query(createGpsAttendanceLogsTableSql());
+  await query(`
+    CREATE INDEX IF NOT EXISTS ix_gps_attendance_employee_id
+      ON gps_attendance_logs (employee_id, recorded_at DESC)
+  `);
+  await query(`
+    CREATE INDEX IF NOT EXISTS ix_gps_attendance_date
+      ON gps_attendance_logs (attendance_date DESC)
+  `);
+
+  tableReady = true;
+};
 
 const getAttendanceDate = (date = new Date()) =>
   date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
 const createLiveTrackingRecord = async (record) => {
+  await ensureGpsAttendanceLogsTable();
+
   const result = await query(
     `INSERT INTO gps_attendance_logs (
        employee_id, attendance_type, attendance_date, recorded_at,
@@ -30,6 +51,8 @@ const createLiveTrackingRecord = async (record) => {
 };
 
 const createAttendanceRecord = async (record) => {
+  await ensureGpsAttendanceLogsTable();
+
   const result = await query(
     `INSERT INTO gps_attendance_logs (
        employee_id, attendance_type, attendance_date, recorded_at,
@@ -57,6 +80,8 @@ const createAttendanceRecord = async (record) => {
 };
 
 const findAttendanceByEmployee = async (employeeId, limit = 50) => {
+  await ensureGpsAttendanceLogsTable();
+
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const result = await query(
     `SELECT id, employee_id, attendance_type, attendance_date, recorded_at,
@@ -73,6 +98,8 @@ const findAttendanceByEmployee = async (employeeId, limit = 50) => {
 };
 
 const findAttendanceForDate = async (employeeId, attendanceType, attendanceDate) => {
+  await ensureGpsAttendanceLogsTable();
+
   const result = await query(
     `SELECT * FROM gps_attendance_logs
      WHERE employee_id = $1
@@ -106,6 +133,7 @@ const mapAttendanceRow = (row) => {
 };
 
 module.exports = {
+  ensureGpsAttendanceLogsTable,
   createAttendanceRecord,
   createLiveTrackingRecord,
   findAttendanceByEmployee,
