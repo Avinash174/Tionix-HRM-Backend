@@ -137,7 +137,7 @@ const joinUserToLocation = (userAlias = "u", locAlias = "l") =>
 /** Filter AppUser rows by office/location id parameter. */
 const filterUserLocationId = (userAlias = "u", paramIndex = 1) =>
   isMysql()
-    ? `${userAlias}.\`fkLocationId\` = ?`
+    ? `CAST(${userAlias}.\`fkLocationId\` AS UNSIGNED) = $${paramIndex}`
     : `NULLIF(TRIM(${userAlias}."fkLocationId"), '')::bigint = $${paramIndex}::bigint`;
 
 const toMysqlPlaceholders = (sql) => sql.replace(/\$(\d+)/g, "?");
