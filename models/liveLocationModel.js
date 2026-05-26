@@ -1,5 +1,5 @@
 const { query, pool } = require("../config/db");
-const { createLiveLocationTableSql, isMysql } = require("../config/dialect");
+const { createLiveLocationTableSql, isMysql, joinUserToLocation, filterUserLocationId } = require("../config/dialect");
 
 let tableReady = false;
 
@@ -144,7 +144,7 @@ const getLatestLiveByOffice = async (locationId, staleSeconds = 45) => {
               ROW_NUMBER() OVER (PARTITION BY el.emp_code ORDER BY el.recorded_at DESC) AS rn
        FROM employee_live_locations el
        INNER JOIN "dbo.AppUser" u ON u."fkEmpId"::TEXT = el.emp_code
-       WHERE u."fkLocationId" = $1
+       WHERE ${filterUserLocationId("u", 1)}
          AND u."fkEmpId" IS NOT NULL
          AND el.recorded_at::date = CURRENT_DATE
      ) l
@@ -173,7 +173,7 @@ const getLatestLiveByOfficeLatest = async (locationId, staleSeconds = 45) => {
               ROW_NUMBER() OVER (PARTITION BY el.emp_code ORDER BY el.recorded_at DESC) AS rn
        FROM employee_live_locations el
        INNER JOIN "dbo.AppUser" u ON u."fkEmpId"::TEXT = el.emp_code
-       WHERE u."fkLocationId" = $1
+       WHERE ${filterUserLocationId("u", 1)}
          AND u."fkEmpId" IS NOT NULL
      ) l
      WHERE l.rn = 1
@@ -187,7 +187,7 @@ const getEmployeesByOffice = async (locationId) => {
   const result = await query(
     `SELECT "fkEmpId", "UserName", "fkLocationId"
      FROM "dbo.AppUser"
-     WHERE "fkLocationId" = $1 AND "fkEmpId" IS NOT NULL`,
+     WHERE NULLIF(TRIM("fkLocationId"), '')::bigint = $1::bigint AND "fkEmpId" IS NOT NULL`,
     [locationId]
   );
   return result.rows;
@@ -200,7 +200,7 @@ const getEmployeeOfficeMap = async () => {
        l."LocationID", l."LocationName", l."Latitude", l."Longitude",
        l."AllowedRadius", l."Address"
      FROM "dbo.AppUser" u
-     LEFT JOIN "dbo.AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+     LEFT JOIN "dbo.AttendanceLocations" l ON ${joinUserToLocation("u", "l")}
      WHERE u."fkEmpId" IS NOT NULL`
   );
   return result.rows;

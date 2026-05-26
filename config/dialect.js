@@ -128,6 +128,18 @@ const adaptSqlForMysql = (sql) => {
   return s;
 };
 
+/** Match AppUser.fkLocationId (text) to AttendanceLocations.LocationID (bigint). */
+const joinUserToLocation = (userAlias = "u", locAlias = "l") =>
+  isMysql()
+    ? `${userAlias}.\`fkLocationId\` = ${locAlias}.\`LocationID\``
+    : `NULLIF(TRIM(${userAlias}."fkLocationId"), '')::bigint = ${locAlias}."LocationID"`;
+
+/** Filter AppUser rows by office/location id parameter. */
+const filterUserLocationId = (userAlias = "u", paramIndex = 1) =>
+  isMysql()
+    ? `${userAlias}.\`fkLocationId\` = ?`
+    : `NULLIF(TRIM(${userAlias}."fkLocationId"), '')::bigint = $${paramIndex}::bigint`;
+
 const toMysqlPlaceholders = (sql) => sql.replace(/\$(\d+)/g, "?");
 
 module.exports = {
@@ -144,4 +156,6 @@ module.exports = {
   createLiveLocationTableSql,
   adaptSqlForMysql,
   toMysqlPlaceholders,
+  joinUserToLocation,
+  filterUserLocationId,
 };

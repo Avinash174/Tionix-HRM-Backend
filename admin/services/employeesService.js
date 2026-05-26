@@ -1,4 +1,5 @@
 const { query } = require("../../config/db");
+const { joinUserToLocation, filterUserLocationId } = require("../../config/dialect");
 const { parsePagination, buildPaginationMeta } = require("../utils/pagination");
 const { toDateString, getMonthRange } = require("../utils/dateUtils");
 const salaryStructureModel = require("../../models/salaryStructureModel");
@@ -13,10 +14,10 @@ const listEmployees = async (q = {}) => {
             u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
             l."LocationName" AS "officeName"
      FROM "dbo.AppUser" u
-     LEFT JOIN "dbo.AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+     LEFT JOIN "dbo.AttendanceLocations" l ON ${joinUserToLocation("u", "l")}
      WHERE u."fkEmpId" IS NOT NULL
        AND ($1::text IS NULL OR u."UserName" ILIKE $1 OR u."fkEmpId"::text ILIKE $1)
-       AND ($2::int IS NULL OR u."fkLocationId" = $2)
+       AND ($2::bigint IS NULL OR ${filterUserLocationId("u", 2)})
      ORDER BY u."UserName"
      LIMIT $3 OFFSET $4`,
     [search, locationId, limit, offset]
@@ -26,7 +27,7 @@ const listEmployees = async (q = {}) => {
     `SELECT COUNT(*) AS total FROM "dbo.AppUser" u
      WHERE u."fkEmpId" IS NOT NULL
        AND ($1::text IS NULL OR u."UserName" ILIKE $1 OR u."fkEmpId"::text ILIKE $1)
-       AND ($2::int IS NULL OR u."fkLocationId" = $2)`,
+       AND ($2::bigint IS NULL OR ${filterUserLocationId("u", 2)})`,
     [search, locationId]
   );
 
@@ -44,9 +45,9 @@ const resolveEmployee = async (id) => {
               u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
               l."LocationName" AS "officeName"
        FROM "dbo.AppUser" u
-       LEFT JOIN "dbo.AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
-       WHERE u."fkEmpId" = $1`,
-      [numericId]
+       LEFT JOIN "dbo.AttendanceLocations" l ON ${joinUserToLocation("u", "l")}
+       WHERE u."fkEmpId" = $1::text`,
+      [String(numericId)]
     );
     return res.rows[0];
   }
@@ -56,7 +57,7 @@ const resolveEmployee = async (id) => {
             u."AttendanceMode", u."GeofencePoint", u."fkLocationId",
             l."LocationName" AS "officeName"
      FROM "dbo.AppUser" u
-     LEFT JOIN "dbo.AttendanceLocations" l ON u."fkLocationId" = l."LocationID"
+     LEFT JOIN "dbo.AttendanceLocations" l ON ${joinUserToLocation("u", "l")}
      WHERE u."pkUserId" = $1`,
     [id]
   );
@@ -92,7 +93,7 @@ const updateEmployee = async (id, patch = {}) => {
         error.statusCode = 404;
         throw error;
       }
-      nextLocationId = parsedLocationId;
+      nextLocationId = String(parsedLocationId);
     }
   }
 

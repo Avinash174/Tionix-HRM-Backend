@@ -1,4 +1,5 @@
 const { query } = require("../../config/db");
+const { joinUserToLocation, filterUserLocationId } = require("../../config/dialect");
 const { parsePagination, buildPaginationMeta } = require("../utils/pagination");
 const {
   getFixedOfficeByLocationId,
@@ -151,7 +152,7 @@ const getTodayPunchSummaryForOffice = async (locationId) => {
        MAX(a."Punch")         AS "lastPunchStatus"
      FROM "dbo.Attendance" a
      INNER JOIN "dbo.AppUser" u ON u."fkEmpId"::text = a."EmpCode"::text
-     WHERE a."AtDate" = CURRENT_DATE::text AND u."fkLocationId" = $1
+     WHERE a."AtDate" = CURRENT_DATE::text AND ${filterUserLocationId("u", 1)}
      GROUP BY a."EmpCode", a."EmpName"`,
     [locationId]
   );
@@ -261,7 +262,7 @@ const getTrackingAnalytics = async (q = {}) => {
   const officeWise = await query(`
     SELECT l."LocationID" AS "locationId", l."LocationName" AS "officeName", COUNT(u."fkEmpId") AS "assignedEmployees"
     FROM "dbo.AttendanceLocations" l
-    LEFT JOIN "dbo.AppUser" u ON u."fkLocationId" = l."LocationID" AND u."fkEmpId" IS NOT NULL
+    LEFT JOIN "dbo.AppUser" u ON ${joinUserToLocation("u", "l")} AND u."fkEmpId" IS NOT NULL
     WHERE l."IsActive" = true
     GROUP BY l."LocationID", l."LocationName"
     ORDER BY l."LocationName"

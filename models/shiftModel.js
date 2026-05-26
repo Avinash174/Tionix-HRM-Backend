@@ -16,8 +16,8 @@ const getActiveTimingForEmployee = async (fkEmpId) => {
        'SalEmpTiming' AS source
      FROM "dbo.SalEmpTiming" et
      WHERE et."fkEmpId" = $1
-       AND et."TSD" <= CURRENT_DATE
-       AND (et."TED" IS NULL OR et."TED" >= CURRENT_DATE)
+       AND et."TSD"::date <= CURRENT_DATE
+       AND (et."TED" IS NULL OR et."TED"::date >= CURRENT_DATE)
      ORDER BY et."TSD" DESC
      LIMIT 1`,
     [empIdNum]
@@ -39,7 +39,7 @@ const getActiveTimingForEmployee = async (fkEmpId) => {
      LEFT JOIN "dbo.SalShiftTiming" st ON st."pkSTId" = e."fkSTId"
      WHERE e."pkEmpId" = $1
      LIMIT 1`,
-    [empIdNum]
+    [String(empIdNum)]
   );
 
   const row = shiftFromEmployee.rows[0];
@@ -73,7 +73,7 @@ const getEmployeeSummary = async (fkEmpId) => {
      FROM "dbo.SalEmployee"
      WHERE "pkEmpId" = $1
      LIMIT 1`,
-    [empIdNum]
+    [String(empIdNum)]
   );
   return result.rows[0] || null;
 };
