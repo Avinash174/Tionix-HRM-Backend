@@ -30,8 +30,34 @@ const ensureAdminSessionsTable = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS ux_admin_sessions_refresh_token
       ON "dbo.AdminSessions" ("RefreshToken")
   `);
+  // Legacy Supabase table may lack SERIAL; keep IDs monotonic via a dedicated sequence.
+  await query(`CREATE SEQUENCE IF NOT EXISTS admin_sessions_session_id_seq`);
+  await query(`
+    SELECT setval(
+      'admin_sessions_session_id_seq',
+      GREATEST(
+        COALESCE((SELECT MAX("SessionID"::bigint) FROM "dbo.AdminSessions"), 0),
+        COALESCE((SELECT last_value FROM admin_sessions_session_id_seq), 0)
+      )
+    )
+  `);
+  await query(
+    `DELETE FROM "dbo.AdminSessions"
+     WHERE "SessionID" IS NULL
+        OR "RefreshToken" = 'pending'
+        OR "RefreshToken" LIKE 'pending:%'`
+  );
 
   tableReady = true;
+};
+
+const readSessionId = (row) => Number(row?.SessionID ?? row?.sessionid);
+
+const allocateSessionId = async () => {
+  const result = await query(
+    `SELECT nextval('admin_sessions_session_id_seq') AS "SessionID"`
+  );
+  return readSessionId(result.rows[0]);
 };
 
 const buildAccessToken = (admin, sessionId) =>
@@ -52,22 +78,15 @@ const createSession = async (admin, deviceInfo = null) => {
   await ensureAdminSessionsTable();
 
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-  // Insert placeholder, get session ID
-  const placeholder = await query(
-    `INSERT INTO "dbo.AdminSessions" ("AdminUserId", "RefreshToken", "DeviceInfo", "ExpiresAt")
-     VALUES ($1, 'pending', $2, $3)
-     RETURNING "SessionID"`,
-    [admin.pkUserId, deviceInfo, expiresAt]
-  );
-
-  const sessionId = placeholder.rows[0].SessionID;
+  const sessionId = await allocateSessionId();
   const refreshToken = buildRefreshToken(admin, sessionId);
   const accessToken = buildAccessToken(admin, sessionId);
 
   await query(
-    `UPDATE "dbo.AdminSessions" SET "RefreshToken" = $1 WHERE "SessionID" = $2`,
-    [refreshToken, sessionId]
+    `INSERT INTO "dbo.AdminSessions"
+       ("SessionID", "AdminUserId", "RefreshToken", "DeviceInfo", "CreatedAt", "ExpiresAt")
+     VALUES ($1, $2, $3, $4, NOW(), $5)`,
+    [sessionId, admin.pkUserId, refreshToken, deviceInfo, expiresAt]
   );
 
   return { sessionId, accessToken, refreshToken, expiresIn: ACCESS_EXPIRES };
@@ -137,7 +156,7 @@ const refreshSession = async (refreshToken) => {
     throw error;
   }
 
-  if (decoded.sid && Number(decoded.sid) !== session.SessionID) {
+  if (decoded.sid && Number(decoded.sid) !== Number(session.SessionID)) {
     await deleteSessionByRefreshToken(refreshToken);
     const error = new Error("Session expired or invalid. Please sign in again.");
     error.statusCode = 403;
